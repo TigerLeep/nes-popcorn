@@ -7,20 +7,18 @@
 ;;;;;;;;;;;;;;;
 
   .rsset $0000
-BackgroundAddress         .rs 0
-BackgroundLow             .rs 1
-BackgroundHigh            .rs 1
-GameSpritePointer         .rs 0
-GameSpritePointerLow      .rs 1
-GameSpritePointerHigh     .rs 1
-Player1Buttons            .rs 1
-Player2Buttons            .rs 1
-PaddleSpeed               .rs 1
-PaddleCount               .rs 1
-PopcornSpeed              .rs 2
-RandomNumber              .rs 1
-GameState                 .rs 1
-BackGroundRowsLeftToCopy  .rs 1
+BackgroundPointer               .rs 2
+GameSpritePointer               .rs 2
+Player1Buttons                  .rs 1
+Player2Buttons                  .rs 1
+PaddleSpeed                     .rs 1
+PaddleCount                     .rs 1
+PopcornSpeed                    .rs 2
+RandomNumber                    .rs 1
+GameState                       .rs 1
+BackGroundRowsLeftToCopy        .rs 1
+NextPPUBackgroundAddress        .rs 2
+GameStateAfterBackgroundLoaded  .rs 1
 
 ButtonA       = %10000000
 ButtonB       = %01000000
@@ -32,12 +30,12 @@ ButtonLeft    = %00000010
 ButtonRight   = %00000001
 PaddleGameSpritesStart = $0200
 PaddleGameSpritesCount = 20
-GameState_Initializing              = 1
-GameState_LoadingStartBackground    = 2
+GameState_InitializeGame              = 1
+GameState_InitializeGameStartScreen    = 2
 GameState_Start                     = 3
-GameState_LoadingPlayBackground     = 4
+GameState_IntializePlayScreen     = 4
 GameState_Play                      = 5
-GameState_LoadingGameOverBackground = 6
+GameState_InitializeGameGameOverScreen = 6
 GameState_GameOver                  = 7
 
 
@@ -48,63 +46,76 @@ GameState_GameOver                  = 7
 ResetInterruptHandler:
   LDX #$FF
   TXS
-  JSR SwitchToGameStateInitializing
+  JSR SwitchToGameStateInitialize
   JSR InitializeCPU
   JSR WaitForVBlank
-  JSR ClearMemory   
+  JSR ClearMemory
   JSR InitializeVariables
   JSR WaitForVBlank
   JSR LoadPalettes
-  JSR LoadSprites
-  JSR LoadStartBackground
   JSR InitializePPU
-  JSR SwitchToGameStateStart
+  JSR SwitchToGameStateInitializeStartScreen
   JMP LoopForever
 
 
 NMIInterruptHandler:
   JSR GenerateRandomNumber
   LDA GameState
-  CMP #GameState_Initializing
-  BEQ HandleInitializing
-  CMP #GameState_LoadingStartBackground
-  BEQ HandleLoadingStartBackground
+  CMP #GameState_InitializeGame
+  BEQ HandleInitializeGame
+  CMP #GameState_InitializeGameStartScreen
+  BEQ HandleInitializeStartScreen
   CMP #GameState_Start
   BEQ HandleStart
-  CMP #GameState_LoadingPlayBackground
-  BEQ HandleLoadingPlayBackground
+  CMP #GameState_IntializePlayScreen
+  BEQ HandleIntializePlayScreen
   CMP #GameState_Play
   BEQ HandlePlay
-  CMP #GameState_LoadingGameOverBackground
-  BEQ HandleLoadingGameOverBackground
+  CMP #GameState_InitializeGameGameOverScreen
+  BEQ HandleInitializeGameOverScreen
   CMP #GameState_GameOver
   BEQ HandleGameOver
-HandleInitializing:
-HandleLoadingPlayBackground:
-HandleLoadingGameOverBackground:
-HandleLoadingGameOver:
-HandleGameOver:
   RTI
-HandleLoadingStartBackground:
-  ;JSR LoadNextChunckOfStartBackground
+HandleInitializeGame:
+  RTI
+HandleInitializeStartScreen:
+  JSR LoadStartBackground
+  JSR ClearSprites
+  JSR SwitchToGameStateStart
+  RTI
+HandleStart:
+  JSR TransferGameSpritesToPPU
+  JSR ReadControllers
+  JSR SwitchToPlayStateWhenStartIsPressed
+  RTI
+HandleIntializePlayScreen:
+  JSR LoadPlayBackground
+  JSR LoadPlaySprites
+  JSR SwitchToGameStatePlay
   RTI
 HandlePlay:
   JSR TransferGameSpritesToPPU
   JSR ReadControllers
   JSR UpdatePaddles
-  JSR InitializePPU
   RTI
-HandleStart:
-  JSR TransferGameSpritesToPPU
-  JSR ReadControllers
-  JSR UpdatePaddles
-  ;JSR SwitchToPlayStateWhenStartIsPressed
-  JSR InitializePPU
+HandleInitializeGameOverScreen:
+HandleGameOver:
   RTI
 
 
 LoopForever:
   JMP LoopForever
+
+
+DisableRendering:
+  LDA #%00000110   ; disable sprites & background, don't hide sprites or background in left 8 pixels, color mode
+  STA $2001
+  RTS
+
+EnableRendering:
+  LDA #%00011110   ; enable sprites & background, don't hide sprites or background in left 8 pixels, color mode
+  STA $2001
+  RTS
 
 
 WaitForVBlank:
@@ -128,12 +139,12 @@ InitializeVariables:
 InitializeCPU:
   SEI          ; disable IRQs
   CLD          ; disable decimal mode
-  LDX #$40
+  LDX #$40     ; #$01000000: Bit 6 = 1 - Disable APU Frame
   STX $4017    ; disable APU frame IRQ
   LDX #$00
   STX $2000    ; disable NMI
-  STX $2001    ; disable rendering
   STX $4010    ; disable DMC IRQs
+  JSR DisableRendering
   RTS
 
 
@@ -147,10 +158,18 @@ ClearMemoryLoop:
   STA $0500, x
   STA $0600, x
   STA $0700, x
-  LDA #$FE
-  STA $0200, x
   INX
   BNE ClearMemoryLoop
+  RTS
+
+
+ClearSprites:
+  LDX #$00
+  LDA #$FE
+ClearSpritesLoop:
+  STA $0200, x
+  INX
+  BNE ClearSpritesLoop
   RTS
 
 
@@ -163,10 +182,6 @@ LoadPalettes:
   LDX #$00              ; start out at 0
 LoadPalettesLoop:
   LDA Palette, x        ; load data from address (Palette + the value in x)
-                          ; 1st time through loop it will load Palette+0
-                          ; 2nd time through loop it will load Palette+1
-                          ; 3rd time through loop it will load Palette+2
-                          ; etc
   STA $2007             ; write to PPU
   INX                   ; X = X + 1
   CPX #$20              ; Compare X to hex $10, decimal 16 - copying 16 bytes = 4 sprites
@@ -175,106 +190,102 @@ LoadPalettesLoop:
   RTS
 
 
-LoadSprites:
+LoadPlaySprites:
   LDX #$00              ; start at 0
-LoadSpritesLoop:
-  LDA Sprites, x        ; load data from address (Sprites +  x)
+LoadPlaySpritesLoop:
+  LDA PaddleSprites, x  ; load data from address (PaddleSprites +  x)
   STA $0200, x          ; store into RAM address ($0200 + x)
   INX                   ; X = X + 1
-  CPX #$FF              ; Compare X to hex $FF, decimal 255
-  BNE LoadSpritesLoop   ; Branch to LoadSpritesLoop if compare was Not Equal to 255
+  BNE LoadPlaySpritesLoop ; Branch to LoadSpritesLoop if compare was Not Equal to 255
                         ; if compare was equal to 255, keep going down
   RTS
 
 
-SwitchToGameStateInitializing:
-  LDA #GameState_Initializing
+SwitchToGameStateInitialize:
+  LDA #GameState_InitializeGame
   STA GameState
   RTS
 
-SwitchToGameStateLoadingStartBackground:
-  LDA #GameState_LoadingStartBackground
+SwitchToGameStateInitializeStartScreen:
+  LDA #GameState_InitializeGameStartScreen
   STA GameState
-  LDA #$00
-  STA BackgroundLow
-  LDA #HIGH(StartBackground)
-  STA BackgroundHigh
-  LDA #30
-  STA BackGroundRowsLeftToCopy
   RTS
 
-SwitchToGameStateStart
+SwitchToGameStateStart:
   LDA #GameState_Start
   STA GameState
   RTS
 
-SwitchToGameStateLoadingPlayBackground:
-  LDA #GameState_LoadingPlayBackground
+SwitchToGameStateIntializePlayScreen:
+  LDA #GameState_IntializePlayScreen
   STA GameState
   RTS
 
-SwitchToGameStatePlay
+SwitchToGameStatePlay:
   LDA #GameState_Play
   STA GameState
   RTS
 
-SwitchToGameStateLoadingGameOverBackground:
-  LDA #GameState_LoadingGameOverBackground
+SwitchToGameStateInitializeGameOverScreen:
+  LDA #GameState_InitializeGameGameOverScreen
   STA GameState
   RTS
 
-SwitchToGameStateGameOver
+SwitchToGameStateGameOver:
   LDA #GameState_GameOver
   STA GameState
   RTS
 
 
 LoadStartBackground:
-  LDA #$00
-  STA BackgroundLow
+  LDA #LOW(StartBackground)
+  STA BackgroundPointer
   LDA #HIGH(StartBackground)
-  STA BackgroundHigh
+  STA BackgroundPointer + 1
   JSR LoadBackground
   RTS
 
 LoadPlayBackground:
-  LDA #$00
-  STA BackgroundLow     ; put the low byte of the address of background into pointer
+  LDA #LOW(PlayBackground)
+  STA BackgroundPointer
   LDA #HIGH(PlayBackground)
-  STA BackgroundHigh    ; put the high byte of the address into pointer
+  STA BackgroundPointer + 1
   JSR LoadBackground
   RTS
 
 LoadBackground:
+  LDA #$00
+  STA $2000             ; disable NMI
+  JSR DisableRendering  ; disable rendering
   LDA $2002             ; read PPU status to reset the high/low latch
   LDA #$20
-  STA $2006             ; write the high byte of $2000 address
+  STA $2006             ; write the high byte of PPU address
   LDA #$00
-  STA $2006             ; write the low byte of $2000 address
+  STA $2006             ; write the low byte of PPU address
 
   LDX #$04
-  LDY #$00              ; 
+  LDY #$00
 
 LoadBackgroundLoop:
-  LDA [BackgroundAddress], y  ; copy one background byte from address in pointer plus Y
+  LDA [BackgroundPointer], y  ; copy one background byte from address in pointer plus Y
   STA $2007                   ; this runs 256 * 4 times
   
   INY                         ; inside loop counter
   BNE LoadBackgroundLoop      ; run the inside loop 256 times before continuing down
   
-  INC BackgroundHigh          ; low byte went 0 to 256, so high byte needs to be changed now
+  INC BackgroundPointer + 1   ; low byte went 0 to 256, so high byte needs to be changed now
   
   DEX
   BNE LoadBackgroundLoop      ; Until X drops to #$00, we keep looping back for another 256 bytes.
 
+  JSR InitializePPU
   RTS
 
 
 InitializePPU:
-  LDA #%10000000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 1
+  LDA #%10000000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
   STA $2000
-  LDA #%00011110   ; enable sprites, enable background, no clipping on left side
-  STA $2001
+  JSR EnableRendering
   LDA #$00         ; No scrolling so always set background display position to 0,0
   STA $2005
   STA $2005
@@ -349,22 +360,22 @@ MovePaddlesRightLoop:
 InitializeMovingPaddles:
   LDX #PaddleGameSpritesCount
   LDA #HIGH(PaddleGameSpritesStart)
-  STA GameSpritePointerHigh
+  STA GameSpritePointer+1
   LDA #LOW(PaddleGameSpritesStart)
   CLC
   ADC #$03
-  STA GameSpritePointerLow
+  STA GameSpritePointer
   LDY #$00
   RTS
   
 IncrementGameSpritePointerAndDecrementX:
   CLC
-  LDA GameSpritePointerLow
+  LDA GameSpritePointer
   ADC #$04
-  STA GameSpritePointerLow
-  LDA GameSpritePointerHigh
+  STA GameSpritePointer
+  LDA GameSpritePointer+1
   ADC #$00
-  STA GameSpritePointerHigh
+  STA GameSpritePointer+1
   DEX
   RTS
 
@@ -375,9 +386,7 @@ SwitchToPlayStateWhenStartIsPressed:
   BNE SwitchToPlayState
   RTS
 SwitchToPlayState:
-  LDA #GameState_Play
-  STA GameState
-  JSR LoadPlayBackground
+  JSR SwitchToGameStateIntializePlayScreen
   RTS
 
 
@@ -411,7 +420,7 @@ Palette:
   .incbin "popcorn.pal" ; Sprite palette
   .incbin "popcorn.pal" ; Background palette
 
-Sprites:
+PaddleSprites:
      ;vert tile attr horiz
   .db $67, $0A, $00, $70
   .db $67, $0A, $00, $78
