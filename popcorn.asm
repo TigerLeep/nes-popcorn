@@ -46,12 +46,15 @@ GameState_GameOver                  = 7
 ResetInterruptHandler:
   LDX #$FF
   TXS
-  JSR SwitchToGameStateInitialize
-  JSR InitializeCPU
+  SEI          ; disable IRQs
+  CLD          ; disable decimal mode
+  LDX #$00
+  STX $2000    ; disable NMI
+  JSR DisableRendering
   JSR WaitForVBlank
   JSR ClearMemory
-  JSR InitializeVariables
   JSR WaitForVBlank
+  JSR InitializeVariables
   JSR LoadPalettes
   JSR InitializePPU
   JSR SwitchToGameStateInitializeStartScreen
@@ -87,6 +90,7 @@ HandleStart:
   JSR TransferGameSpritesToPPU
   JSR ReadControllers
   JSR SwitchToPlayStateWhenStartIsPressed
+  JSR EnableRendering
   RTI
 HandleIntializePlayScreen:
   JSR LoadPlayBackground
@@ -97,6 +101,7 @@ HandlePlay:
   JSR TransferGameSpritesToPPU
   JSR ReadControllers
   JSR UpdatePaddles
+  JSR EnableRendering
   RTI
 HandleInitializeGameOverScreen:
 HandleGameOver:
@@ -133,18 +138,6 @@ InitializeVariables:
   STX PopcornSpeed
   INX
   STX PopcornSpeed + 1
-  RTS
-
-
-InitializeCPU:
-  SEI          ; disable IRQs
-  CLD          ; disable decimal mode
-  LDX #$40     ; #$01000000: Bit 6 = 1 - Disable APU Frame
-  STX $4017    ; disable APU frame IRQ
-  LDX #$00
-  STX $2000    ; disable NMI
-  STX $4010    ; disable DMC IRQs
-  JSR DisableRendering
   RTS
 
 
@@ -254,8 +247,6 @@ LoadPlayBackground:
   RTS
 
 LoadBackground:
-  LDA #$00
-  STA $2000             ; disable NMI
   JSR DisableRendering  ; disable rendering
   LDA $2002             ; read PPU status to reset the high/low latch
   LDA #$20
@@ -277,8 +268,6 @@ LoadBackgroundLoop:
   
   DEX
   BNE LoadBackgroundLoop      ; Until X drops to #$00, we keep looping back for another 256 bytes.
-
-  JSR InitializePPU
   RTS
 
 
