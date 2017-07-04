@@ -11,7 +11,8 @@ BackgroundPointer               .rs 2
 GameSpritePointer               .rs 2
 Player1Buttons                  .rs 1
 Player2Buttons                  .rs 1
-PaddleSpeed                     .rs 1
+NormalPaddleSpeed               .rs 1 ; Not to exceed $1F (31)
+CurrentPaddleSpeed              .rs 1
 PaddleCount                     .rs 1
 PopcornSpeed                    .rs 2
 RandomNumber                    .rs 1
@@ -30,13 +31,13 @@ ButtonLeft    = %00000010
 ButtonRight   = %00000001
 PaddleGameSpritesStart = $0200
 PaddleGameSpritesCount = 20
-GameState_InitializeGame              = 1
-GameState_InitializeGameStartScreen    = 2
-GameState_Start                     = 3
-GameState_IntializePlayScreen     = 4
-GameState_Play                      = 5
-GameState_InitializeGameGameOverScreen = 6
-GameState_GameOver                  = 7
+GameState_InitializeGame                = 1
+GameState_InitializeGameStartScreen     = 2
+GameState_Start                         = 3
+GameState_IntializePlayScreen           = 4
+GameState_Play                          = 5
+GameState_InitializeGameGameOverScreen  = 6
+GameState_GameOver                      = 7
 
 
   .bank 0
@@ -130,8 +131,8 @@ WaitForVBlank:
 
 
 InitializeVariables:
-  LDX #$08
-  STX PaddleSpeed
+  LDX #$08  ; Not to exceed $1F (31)
+  STX NormalPaddleSpeed
   LDX #$05
   STX PaddleCount
   LDX #$00
@@ -325,22 +326,58 @@ UpdatePaddles:
 
 MovePaddlesLeft:
   JSR InitializeMovingPaddles
+  LDA [GameSpritePointer],Y
+  SEC
+  SBC NormalPaddleSpeed
+  BCS UseNormalLeftPaddleSpeed
+UseAdjustedLeftPaddleSpeed:
+  LDA [GameSpritePointer],y
+  STA CurrentPaddleSpeed
+  JMP MovePaddlesLeftLoop
+UseNormalLeftPaddleSpeed:
+  LDA NormalPaddleSpeed
+  STA CurrentPaddleSpeed
 MovePaddlesLeftLoop:
   LDA [GameSpritePointer],Y
   SEC
-  SBC PaddleSpeed
+  SBC CurrentPaddleSpeed
   STA [GameSpritePointer],Y
   JSR IncrementGameSpritePointerAndDecrementX
   BNE MovePaddlesLeftLoop
-  BNE MovePaddlesLeftLoop
   RTS
+
 
 MovePaddlesRight:
   JSR InitializeMovingPaddles
+  LDA [GameSpritePointer],Y
+  CLC
+  ADC NormalPaddleSpeed
+  CMP #$E0
+  BCC UseNormalRightPaddleSpeed
+UseAdjustedRightPaddleSpeed:
+  ; A is over #$E0 by somewhere between #$00 and #$1F (31).
+  ; We need to subtract that amount from NormalPaddleSpeed in
+  ; order to get the adjusted CurrentPaddleSpeed.
+  ; 1 - subtract #$E00 from A and store that temporarily.
+  ; 2 - Load NormalPaddleSpeed into A.
+  ; 3 - subtract the temporarily stored value from A.
+  ; A now has the adjusted Paddle Speed.  Store that in
+  ; CurrentPaddleSpeed.
+  SEC
+  SBC #$E0
+  STA CurrentPaddleSpeed
+  LDA NormalPaddleSpeed
+  SEC
+  SBC CurrentPaddleSpeed
+  STA CurrentPaddleSpeed
+  JMP MovePaddlesRightLoop
+UseNormalRightPaddleSpeed:
+  LDA NormalPaddleSpeed
+  STA CurrentPaddleSpeed
 MovePaddlesRightLoop:
   LDA [GameSpritePointer],Y
   CLC
-  ADC PaddleSpeed
+  ADC CurrentPaddleSpeed
   STA [GameSpritePointer],Y
   JSR IncrementGameSpritePointerAndDecrementX
   BNE MovePaddlesRightLoop
@@ -358,8 +395,8 @@ InitializeMovingPaddles:
   RTS
   
 IncrementGameSpritePointerAndDecrementX:
-  CLC
   LDA GameSpritePointer
+  CLC
   ADC #$04
   STA GameSpritePointer
   LDA GameSpritePointer+1
