@@ -6,16 +6,16 @@
 
 ;;;;;;;;;;;;;;;
 
-ButtonA       = %10000000
-ButtonB       = %01000000
-ButtonSelect  = %00100000
-ButtonStart   = %00010000
-ButtonUp      = %00001000
-ButtonDown    = %00000100
-ButtonLeft    = %00000010
-ButtonRight   = %00000001
-PaddleGameSpritesStart = $0200
-PaddleGameSpritesCount = 20
+ButtonA                                 = %10000000
+ButtonB                                 = %01000000
+ButtonSelect                            = %00100000
+ButtonStart                             = %00010000
+ButtonUp                                = %00001000
+ButtonDown                              = %00000100
+ButtonLeft                              = %00000010
+ButtonRight                             = %00000001
+PaddleGameSpritesStart                  = $0200
+ConveyorSpeed                           = 10 ; # frames before conveyor (and popcorn on conveyor) advances
 GameState_InitializeGame                = 1
 GameState_InitializeGameStartScreen     = 2
 GameState_Start                         = 3
@@ -23,22 +23,38 @@ GameState_IntializePlayScreen           = 4
 GameState_Play                          = 5
 GameState_InitializeGameGameOverScreen  = 6
 GameState_GameOver                      = 7
+PopcornState_Background                 = 1
+PopcornState_Falling                    = 2
+PopcornState_Conveyor                   = 3
+PopcornState_ExParrot                   = 4
+ConveyorFirstSprite                     = $0B
+ConveyorLastSprite                      = $0E
 
   .rsset $0000
-BackgroundPointer   .rs 2
-GameSpritePointer   .rs 2
-Player1Buttons      .rs 1
-Player2Buttons      .rs 1
-NormalPaddleSpeed   .rs 1 ; Not to exceed $1F (31)
-CurrentPaddleSpeed  .rs 1
-PaddleCount         .rs 1
-PopcornSpeed        .rs 1
-RandomNumber        .rs 1
-TempAddress         .rs 2
-GameState           .rs 1
+BackgroundPointer       .rs 2
+GameSpritePointer       .rs 2
+Player1Buttons          .rs 1
+Player2Buttons          .rs 1
+NormalPaddleSpeed       .rs 1 ; Not to exceed $1F (31) or calculations for right wall limit fail. :)
+CurrentPaddleSpeed      .rs 1
+PaddleCount             .rs 1
+PopcornFrameSpeed       .rs 1 ; # frames before popcorn advances when falling
+PopcornPixelSpeed       .rs 1 ; # pixels popcorn advances when falling
+RandomNumber            .rs 1
+TempPointer             .rs 2
+GameState               .rs 1
+ConveyorSprite          .rs 1
+PopcornSpritePointer    .rs 2
+PopcornStartXPointer    .rs 2
+PopcornStartYPointer    .rs 2
+PopcornStatePointer     .rs 2
+PopcornPositionPointer  .rs 2
+
+
 
   .rsset $0300
-;Popcorn             .rs 375   ; (5 bytes x 15 popcorn x 5 rows)
+PopcornState:       .rs 75
+PopcornPosition:    .rs 75
 
 
   .bank 0
@@ -97,7 +113,6 @@ HandleStart:
 HandleIntializePlayScreen:
   JSR LoadPlayBackground
   JSR LoadInitialPaddleSprites
-  JSR LoadPopcorn
   JSR SwitchToGameStatePlay
   RTI
 HandlePlay:
@@ -137,10 +152,55 @@ InitializeVariables:
   STX NormalPaddleSpeed
   LDX #$05
   STX PaddleCount
+  LDX #$18
+  STX PopcornFrameSpeed
   LDX #$01
-  STX PopcornSpeed
+  STX PopcornPixelSpeed
+  LDX #ConveyorFirstSprite
+  STX ConveyorSprite
+  JSR InitializePopcornPointers
+  JSR InitializePopcorns
   RTS
 
+
+InitializePopcornPointers:
+  LDX #LOW(PopcornSprite)
+  STX PopcornSpritePointer
+  LDX #HIGH(PopcornSprite)
+  STX PopcornSpritePointer + 1
+
+  LDX #LOW(PopcornStartX)
+  STX PopcornStartXPointer
+  LDX #HIGH(PopcornStartX)
+  STX PopcornStartXPointer + 1
+
+  LDX #LOW(PopcornStartY)
+  STX PopcornStartYPointer
+  LDX #HIGH(PopcornStartY)
+  STX PopcornStartYPointer + 1
+
+  LDX #LOW(PopcornState)
+  STX PopcornStatePointer
+  LDX #HIGH(PopcornState)
+  STX PopcornStatePointer + 1
+
+  LDX #LOW(PopcornPosition)
+  STX PopcornPositionPointer
+  LDX #HIGH(PopcornPosition)
+  STX PopcornPositionPointer + 1
+  RTS
+
+
+InitializePopcorns:
+  LDY 75
+InitializePopcornLoop:
+  LDA #PopcornState_Background
+  STA [PopcornStatePointer], Y
+  LDA [PopcornStartYPointer], Y
+  STA [PopcornPositionPointer], Y
+  DEY
+  BNE InitializePopcornLoop
+  RTS
 
 ClearMemory:
   LDX #$00
@@ -192,17 +252,6 @@ LoadInitialPaddleSpritesLoop:
   INX
   CPX #80
   BNE LoadInitialPaddleSpritesLoop
-  RTS
-
-
-LoadPopcorn:
-  LDX #$00
-LoadPopcornLoop:
-  LDA Popcorn, x
-  STA $0300, x
-  INX
-  CPX #60
-  BNE LoadPopcornLoop
   RTS
 
 
@@ -342,7 +391,7 @@ MovePaddlesLeft:
   SBC NormalPaddleSpeed
   BCS UseNormalLeftPaddleSpeed
 UseAdjustedLeftPaddleSpeed:
-  LDA [GameSpritePointer],y
+  LDA [GameSpritePointer],Y
   STA CurrentPaddleSpeed
   JMP MovePaddlesLeftLoop
 UseNormalLeftPaddleSpeed:
@@ -395,7 +444,6 @@ MovePaddlesRightLoop:
   RTS
 
 InitializeMovingPaddles:
-  LDX #PaddleGameSpritesCount
   LDA #HIGH(PaddleGameSpritesStart)
   STA GameSpritePointer+1
   LDA #LOW(PaddleGameSpritesStart)
@@ -431,9 +479,9 @@ SwitchToPlayState:
 ;  LDX 0
 ;  LDY 0
 ;  LDA #LOW(Popcorn)
-;  STA TempAddress
+;  STA TempPointer
 ;  LDA #HIGH(Popcorn)
-;  STA TempAddress + 1
+;  STA TempPointer + 1
 ;InitializePopcornLoop:
 ;  ; Sprite # (left sprite)
 ;  ; Starting X
@@ -442,7 +490,7 @@ SwitchToPlayState:
 ;  ; Current Y
 ;  TXA
 ;  ASL A
-;  STA [TempAddress], 0
+;  STA [TempPointer], 0
 ;  ;...
 ;  RTS
 
@@ -503,90 +551,27 @@ PaddleSprites:
   .db $C7, $0A, $00, $70
   .db $C7, $0A, $00, $78
   .db $C7, $0A, $00, $80
-  .db $0D, $00, $00, $18 ; .db $C7, $0A, $00, $88
+  .db $C7, $0A, $00, $88
 
-Popcorn:
-    ;        Start Start
-    ; Sprite,   X,   Y
-  .db    $00, $08, $05
-  .db    $00, $18, $05
-  .db    $00, $28, $05
-  .db    $00, $38, $05
-  .db    $00, $48, $05
-  .db    $00, $58, $05
-  .db    $00, $68, $05
-  .db    $00, $78, $05
-  .db    $00, $88, $05
-  .db    $00, $98, $05
-  .db    $00, $A8, $05
-  .db    $00, $B8, $05
-  .db    $00, $D8, $05
-  .db    $00, $E8, $05
-  .db    $00, $F8, $05
+PopcornSprite:
+  .db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+  .db $02, $02, $02, $02, $02, $02, $02, $02, $02, $02, $02, $02, $02, $02, $02
+  .db $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04
+  .db $06, $06, $06, $06, $06, $06, $06, $06, $06, $06, $06, $06, $06, $06, $06
+  .db $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08
+PopcornStartX:
+  .db $08, $18, $28, $38, $48, $58, $68, $78, $88, $98, $A8, $B8, $C8, $D8, $E8
+  .db $08, $18, $28, $38, $48, $58, $68, $78, $88, $98, $A8, $B8, $C8, $D8, $E8
+  .db $08, $18, $28, $38, $48, $58, $68, $78, $88, $98, $A8, $B8, $C8, $D8, $E8
+  .db $08, $18, $28, $38, $48, $58, $68, $78, $88, $98, $A8, $B8, $C8, $D8, $E8
+  .db $08, $18, $28, $38, $48, $58, $68, $78, $88, $98, $A8, $B8, $C8, $D8, $E8
+PopcornStartY:
+  .db $05, $05, $05, $05, $05, $05, $05, $05, $05, $05, $05, $05, $05, $05, $05
+  .db $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D
+  .db $15, $15, $15, $15, $15, $15, $15, $15, $15, $15, $15, $15, $15, $15, $15
+  .db $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D
+  .db $25, $25, $25, $25, $25, $25, $25, $25, $25, $25, $25, $25, $25, $25, $25
 
-  .db    $02, $08, $0D
-  .db    $02, $18, $0D
-  .db    $02, $28, $0D
-  .db    $02, $38, $0D
-  .db    $02, $48, $0D
-  .db    $02, $58, $0D
-  .db    $02, $68, $0D
-  .db    $02, $78, $0D
-  .db    $02, $88, $0D
-  .db    $02, $98, $0D
-  .db    $02, $A8, $0D
-  .db    $02, $B8, $0D
-  .db    $02, $D8, $0D
-  .db    $02, $E8, $0D
-  .db    $02, $F8, $0D
-
-  .db    $04, $08, $15
-  .db    $04, $18, $15
-  .db    $04, $28, $15
-  .db    $04, $38, $15
-  .db    $04, $48, $15
-  .db    $04, $58, $15
-  .db    $04, $68, $15
-  .db    $04, $78, $15
-  .db    $04, $88, $15
-  .db    $04, $98, $15
-  .db    $04, $A8, $15
-  .db    $04, $B8, $15
-  .db    $04, $D8, $15
-  .db    $04, $E8, $15
-  .db    $04, $F8, $15
-
-  .db    $06, $08, $1D
-  .db    $06, $18, $1D
-  .db    $06, $28, $1D
-  .db    $06, $38, $1D
-  .db    $06, $48, $1D
-  .db    $06, $58, $1D
-  .db    $06, $68, $1D
-  .db    $06, $78, $1D
-  .db    $06, $88, $1D
-  .db    $06, $98, $1D
-  .db    $06, $A8, $1D
-  .db    $06, $B8, $1D
-  .db    $06, $D8, $1D
-  .db    $06, $E8, $1D
-  .db    $06, $F8, $1D
-
-  .db    $08, $08, $25
-  .db    $08, $18, $25
-  .db    $08, $28, $25
-  .db    $08, $38, $25
-  .db    $08, $48, $25
-  .db    $08, $58, $25
-  .db    $08, $68, $25
-  .db    $08, $78, $25
-  .db    $08, $88, $25
-  .db    $08, $98, $25
-  .db    $08, $A8, $25
-  .db    $08, $B8, $25
-  .db    $08, $D8, $25
-  .db    $08, $E8, $25
-  .db    $08, $F8, $25
 
   .org $FFFA
   .dw NMIInterruptHandler   ; When VBlank begins
