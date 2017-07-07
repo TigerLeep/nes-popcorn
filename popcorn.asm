@@ -6,21 +6,6 @@
 
 ;;;;;;;;;;;;;;;
 
-  .rsset $0000
-BackgroundPointer               .rs 2
-GameSpritePointer               .rs 2
-Player1Buttons                  .rs 1
-Player2Buttons                  .rs 1
-NormalPaddleSpeed               .rs 1 ; Not to exceed $1F (31)
-CurrentPaddleSpeed              .rs 1
-PaddleCount                     .rs 1
-PopcornSpeed                    .rs 2
-RandomNumber                    .rs 1
-GameState                       .rs 1
-BackGroundRowsLeftToCopy        .rs 1
-NextPPUBackgroundAddress        .rs 2
-GameStateAfterBackgroundLoaded  .rs 1
-
 ButtonA       = %10000000
 ButtonB       = %01000000
 ButtonSelect  = %00100000
@@ -38,6 +23,22 @@ GameState_IntializePlayScreen           = 4
 GameState_Play                          = 5
 GameState_InitializeGameGameOverScreen  = 6
 GameState_GameOver                      = 7
+
+  .rsset $0000
+BackgroundPointer   .rs 2
+GameSpritePointer   .rs 2
+Player1Buttons      .rs 1
+Player2Buttons      .rs 1
+NormalPaddleSpeed   .rs 1 ; Not to exceed $1F (31)
+CurrentPaddleSpeed  .rs 1
+PaddleCount         .rs 1
+PopcornSpeed        .rs 1
+RandomNumber        .rs 1
+TempAddress         .rs 2
+GameState           .rs 1
+
+  .rsset $0300
+;Popcorn             .rs 375   ; (5 bytes x 15 popcorn x 5 rows)
 
 
   .bank 0
@@ -95,7 +96,8 @@ HandleStart:
   RTI
 HandleIntializePlayScreen:
   JSR LoadPlayBackground
-  JSR LoadPlaySprites
+  JSR LoadInitialPaddleSprites
+  JSR LoadPopcorn
   JSR SwitchToGameStatePlay
   RTI
 HandlePlay:
@@ -135,10 +137,8 @@ InitializeVariables:
   STX NormalPaddleSpeed
   LDX #$05
   STX PaddleCount
-  LDX #$00
+  LDX #$01
   STX PopcornSpeed
-  INX
-  STX PopcornSpeed + 1
   RTS
 
 
@@ -184,14 +184,25 @@ LoadPalettesLoop:
   RTS
 
 
-LoadPlaySprites:
-  LDX #$00              ; start at 0
-LoadPlaySpritesLoop:
-  LDA PaddleSprites, x  ; load data from address (PaddleSprites +  x)
-  STA $0200, x          ; store into RAM address ($0200 + x)
-  INX                   ; X = X + 1
-  BNE LoadPlaySpritesLoop ; Branch to LoadSpritesLoop if compare was Not Equal to 255
-                        ; if compare was equal to 255, keep going down
+LoadInitialPaddleSprites:
+  LDX #$00
+LoadInitialPaddleSpritesLoop:
+  LDA PaddleSprites, x
+  STA $0200, x
+  INX
+  CPX #80
+  BNE LoadInitialPaddleSpritesLoop
+  RTS
+
+
+LoadPopcorn:
+  LDX #$00
+LoadPopcornLoop:
+  LDA Popcorn, x
+  STA $0300, x
+  INX
+  CPX #60
+  BNE LoadPopcornLoop
   RTS
 
 
@@ -416,6 +427,27 @@ SwitchToPlayState:
   RTS
 
 
+;InitializePopcorn:
+;  LDX 0
+;  LDY 0
+;  LDA #LOW(Popcorn)
+;  STA TempAddress
+;  LDA #HIGH(Popcorn)
+;  STA TempAddress + 1
+;InitializePopcornLoop:
+;  ; Sprite # (left sprite)
+;  ; Starting X
+;  ; Starting Y
+;  ; Falling
+;  ; Current Y
+;  TXA
+;  ASL A
+;  STA [TempAddress], 0
+;  ;...
+;  RTS
+
+
+
 GenerateRandomNumber:
   LDA RandomNumber
   BEQ DoEor
@@ -471,8 +503,90 @@ PaddleSprites:
   .db $C7, $0A, $00, $70
   .db $C7, $0A, $00, $78
   .db $C7, $0A, $00, $80
-  .db $C7, $0A, $00, $88
+  .db $0D, $00, $00, $18 ; .db $C7, $0A, $00, $88
 
+Popcorn:
+    ;        Start Start
+    ; Sprite,   X,   Y
+  .db    $00, $08, $05
+  .db    $00, $18, $05
+  .db    $00, $28, $05
+  .db    $00, $38, $05
+  .db    $00, $48, $05
+  .db    $00, $58, $05
+  .db    $00, $68, $05
+  .db    $00, $78, $05
+  .db    $00, $88, $05
+  .db    $00, $98, $05
+  .db    $00, $A8, $05
+  .db    $00, $B8, $05
+  .db    $00, $D8, $05
+  .db    $00, $E8, $05
+  .db    $00, $F8, $05
+
+  .db    $02, $08, $0D
+  .db    $02, $18, $0D
+  .db    $02, $28, $0D
+  .db    $02, $38, $0D
+  .db    $02, $48, $0D
+  .db    $02, $58, $0D
+  .db    $02, $68, $0D
+  .db    $02, $78, $0D
+  .db    $02, $88, $0D
+  .db    $02, $98, $0D
+  .db    $02, $A8, $0D
+  .db    $02, $B8, $0D
+  .db    $02, $D8, $0D
+  .db    $02, $E8, $0D
+  .db    $02, $F8, $0D
+
+  .db    $04, $08, $15
+  .db    $04, $18, $15
+  .db    $04, $28, $15
+  .db    $04, $38, $15
+  .db    $04, $48, $15
+  .db    $04, $58, $15
+  .db    $04, $68, $15
+  .db    $04, $78, $15
+  .db    $04, $88, $15
+  .db    $04, $98, $15
+  .db    $04, $A8, $15
+  .db    $04, $B8, $15
+  .db    $04, $D8, $15
+  .db    $04, $E8, $15
+  .db    $04, $F8, $15
+
+  .db    $06, $08, $1D
+  .db    $06, $18, $1D
+  .db    $06, $28, $1D
+  .db    $06, $38, $1D
+  .db    $06, $48, $1D
+  .db    $06, $58, $1D
+  .db    $06, $68, $1D
+  .db    $06, $78, $1D
+  .db    $06, $88, $1D
+  .db    $06, $98, $1D
+  .db    $06, $A8, $1D
+  .db    $06, $B8, $1D
+  .db    $06, $D8, $1D
+  .db    $06, $E8, $1D
+  .db    $06, $F8, $1D
+
+  .db    $08, $08, $25
+  .db    $08, $18, $25
+  .db    $08, $28, $25
+  .db    $08, $38, $25
+  .db    $08, $48, $25
+  .db    $08, $58, $25
+  .db    $08, $68, $25
+  .db    $08, $78, $25
+  .db    $08, $88, $25
+  .db    $08, $98, $25
+  .db    $08, $A8, $25
+  .db    $08, $B8, $25
+  .db    $08, $D8, $25
+  .db    $08, $E8, $25
+  .db    $08, $F8, $25
 
   .org $FFFA
   .dw NMIInterruptHandler   ; When VBlank begins
