@@ -30,6 +30,7 @@ PopcornState_ExParrot                   = 4
 ConveyorFirstSprite                     = $0B
 ConveyorLastSprite                      = $0E
 
+
   .rsset $0000
 BackgroundPointer       .rs 2
 GameSpritePointer       .rs 2
@@ -44,12 +45,6 @@ RandomNumber            .rs 1
 TempPointer             .rs 2
 GameState               .rs 1
 ConveyorSprite          .rs 1
-PopcornSpritePointer    .rs 2
-PopcornStartXPointer    .rs 2
-PopcornStartYPointer    .rs 2
-PopcornStatePointer     .rs 2
-PopcornPositionPointer  .rs 2
-
 
 
   .rsset $0300
@@ -158,47 +153,18 @@ InitializeVariables:
   STX PopcornPixelSpeed
   LDX #ConveyorFirstSprite
   STX ConveyorSprite
-  JSR InitializePopcornPointers
   JSR InitializePopcorns
   RTS
 
 
-InitializePopcornPointers:
-  LDX #LOW(PopcornSprite)
-  STX PopcornSpritePointer
-  LDX #HIGH(PopcornSprite)
-  STX PopcornSpritePointer + 1
-
-  LDX #LOW(PopcornStartX)
-  STX PopcornStartXPointer
-  LDX #HIGH(PopcornStartX)
-  STX PopcornStartXPointer + 1
-
-  LDX #LOW(PopcornStartY)
-  STX PopcornStartYPointer
-  LDX #HIGH(PopcornStartY)
-  STX PopcornStartYPointer + 1
-
-  LDX #LOW(PopcornState)
-  STX PopcornStatePointer
-  LDX #HIGH(PopcornState)
-  STX PopcornStatePointer + 1
-
-  LDX #LOW(PopcornPosition)
-  STX PopcornPositionPointer
-  LDX #HIGH(PopcornPosition)
-  STX PopcornPositionPointer + 1
-  RTS
-
-
 InitializePopcorns:
-  LDY 75
+  LDX 75
 InitializePopcornLoop:
   LDA #PopcornState_Background
-  STA [PopcornStatePointer], Y
-  LDA [PopcornStartYPointer], Y
-  STA [PopcornPositionPointer], Y
-  DEY
+  STA PopcornState, X
+  LDA PopcornStartY, X
+  STA PopcornPosition, X
+  DEX
   BNE InitializePopcornLoop
   RTS
 
