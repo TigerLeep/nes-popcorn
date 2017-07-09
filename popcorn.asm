@@ -14,8 +14,7 @@ ButtonUp                                = %00001000
 ButtonDown                              = %00000100
 ButtonLeft                              = %00000010
 ButtonRight                             = %00000001
-PaddleGameSpritesStart                  = $0200
-ConveyorSpeed                           = 10 ; # frames before conveyor (and popcorn on conveyor) advances
+PaddleSpritesCPUAddress                 = $0200
 GameState_InitializeGame                = 1
 GameState_InitializeGameStartScreen     = 2
 GameState_Start                         = 3
@@ -27,8 +26,10 @@ PopcornState_Background                 = 1
 PopcornState_Falling                    = 2
 PopcornState_Conveyor                   = 3
 PopcornState_ExParrot                   = 4
+ConveyorFrameSpeed                      = 2 ; # frames before conveyor (and popcorn on conveyor) advances
 ConveyorFirstSprite                     = $0B
 ConveyorLastSprite                      = $0E
+ConveyorBackgroundPPUAddress            = $2340
 
 
   .rsset $0000
@@ -45,6 +46,7 @@ RandomNumber            .rs 1
 TempPointer             .rs 2
 GameState               .rs 1
 ConveyorSprite          .rs 1
+ConveyorFrameCount      .rs 1
 
 
   .rsset $0300
@@ -95,22 +97,28 @@ NMIInterruptHandler:
 HandleInitializeGame:
   RTI
 HandleInitializeStartScreen:
+  JSR DisableRendering
   JSR LoadStartBackground
   JSR ClearSprites
   JSR SwitchToGameStateStart
   RTI
 HandleStart:
+  JSR UpdateConveyor
+  JSR TransferConveyorToPPU
   JSR TransferGameSpritesToPPU
   JSR ReadControllers
   JSR SwitchToPlayStateWhenStartIsPressed
   JSR EnableRendering
   RTI
 HandleIntializePlayScreen:
+  JSR DisableRendering
   JSR LoadPlayBackground
   JSR LoadInitialPaddleSprites
   JSR SwitchToGameStatePlay
   RTI
 HandlePlay:
+  JSR UpdateConveyor
+  JSR TransferConveyorToPPU
   JSR TransferGameSpritesToPPU
   JSR ReadControllers
   JSR UpdatePaddles
@@ -118,6 +126,8 @@ HandlePlay:
   RTI
 HandleInitializeGameOverScreen:
 HandleGameOver:
+  JSR UpdateConveyor
+  JSR TransferConveyorToPPU
   RTI
 
 
@@ -153,12 +163,14 @@ InitializeVariables:
   STX PopcornPixelSpeed
   LDX #ConveyorFirstSprite
   STX ConveyorSprite
-  JSR InitializePopcorns
+  LDX #$00
+  STX ConveyorFrameCount
+  JSR InitializePopcorn
   RTS
 
 
-InitializePopcorns:
-  LDX 75
+InitializePopcorn:
+  LDX #75
 InitializePopcornLoop:
   LDA #PopcornState_Background
   STA PopcornState, X
@@ -274,7 +286,6 @@ LoadPlayBackground:
   RTS
 
 LoadBackground:
-  JSR DisableRendering  ; disable rendering
   LDA $2002             ; read PPU status to reset the high/low latch
   LDA #$20
   STA $2006             ; write the high byte of PPU address
@@ -295,6 +306,27 @@ LoadBackgroundLoop:
   
   DEX
   BNE LoadBackgroundLoop      ; Until X drops to #$00, we keep looping back for another 256 bytes.
+  RTS
+
+TransferConveyorToPPU:
+  LDA $2002             ; read PPU status to reset the high/low latch
+  LDA #HIGH(ConveyorBackgroundPPUAddress)
+  STA $2006             ; write the high byte of PPU address
+  LDA #LOW(ConveyorBackgroundPPUAddress)
+  STA $2006             ; write the low byte of PPU address
+
+  LDX #$20
+  LDA ConveyorSprite
+
+TransferConveyorToPPULoop:
+  STA $2007
+  DEX
+  BNE TransferConveyorToPPULoop
+  LDA $2002             ; read PPU status to reset the high/low latch
+  LDA #$20
+  STA $2006             ; write the high byte of PPU address
+  LDA #$00
+  STA $2006             ; write the low byte of PPU address
   RTS
 
 
@@ -410,13 +442,14 @@ MovePaddlesRightLoop:
   RTS
 
 InitializeMovingPaddles:
-  LDA #HIGH(PaddleGameSpritesStart)
+  LDA #HIGH(PaddleSpritesCPUAddress)
   STA GameSpritePointer+1
-  LDA #LOW(PaddleGameSpritesStart)
+  LDA #LOW(PaddleSpritesCPUAddress)
   CLC
   ADC #$03
   STA GameSpritePointer
   LDY #$00
+  LDX #20
   RTS
   
 IncrementGameSpritePointerAndDecrementX:
@@ -441,25 +474,24 @@ SwitchToPlayState:
   RTS
 
 
-;InitializePopcorn:
-;  LDX 0
-;  LDY 0
-;  LDA #LOW(Popcorn)
-;  STA TempPointer
-;  LDA #HIGH(Popcorn)
-;  STA TempPointer + 1
-;InitializePopcornLoop:
-;  ; Sprite # (left sprite)
-;  ; Starting X
-;  ; Starting Y
-;  ; Falling
-;  ; Current Y
-;  TXA
-;  ASL A
-;  STA [TempPointer], 0
-;  ;...
-;  RTS
-
+UpdateConveyor:
+  LDX ConveyorFrameCount
+  INX
+  CPX #ConveyorFrameSpeed
+  BCS AdvanceConveyor
+  STX ConveyorFrameCount
+  RTS
+AdvanceConveyor:
+  LDX #$00
+  STX ConveyorFrameCount
+  LDX ConveyorSprite
+  CPX #ConveyorLastSprite
+  BNE IncrementConveyorSprite
+  LDX #ConveyorFirstSprite - 1
+IncrementConveyorSprite:
+  INX
+  STX ConveyorSprite
+  RTS
 
 
 GenerateRandomNumber:
