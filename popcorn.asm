@@ -78,7 +78,7 @@ ResetInterruptHandler:
 
 NMIInterruptHandler:
   JSR GenerateRandomNumber
-  LDA GameState
+  LDA <GameState
   CMP #GameState_InitializeGame
   BEQ HandleInitializeGame
   CMP #GameState_InitializeGameStartScreen
@@ -154,17 +154,17 @@ WaitForVBlank:
 
 InitializeVariables:
   LDX #$08  ; Not to exceed $1F (31)
-  STX NormalPaddleSpeed
+  STX <NormalPaddleSpeed
   LDX #$05
-  STX PaddleCount
+  STX <PaddleCount
   LDX #$18
-  STX PopcornFrameSpeed
+  STX <PopcornFrameSpeed
   LDX #$01
-  STX PopcornPixelSpeed
+  STX <PopcornPixelSpeed
   LDX #ConveyorFirstSprite
-  STX ConveyorSprite
+  STX <ConveyorSprite
   LDX #$00
-  STX ConveyorFrameCount
+  STX <ConveyorFrameCount
   JSR InitializePopcorn
   RTS
 
@@ -235,53 +235,53 @@ LoadInitialPaddleSpritesLoop:
 
 SwitchToGameStateInitialize:
   LDA #GameState_InitializeGame
-  STA GameState
+  STA <GameState
   RTS
 
 SwitchToGameStateInitializeStartScreen:
   LDA #GameState_InitializeGameStartScreen
-  STA GameState
+  STA <GameState
   RTS
 
 SwitchToGameStateStart:
   LDA #GameState_Start
-  STA GameState
+  STA <GameState
   RTS
 
 SwitchToGameStateIntializePlayScreen:
   LDA #GameState_IntializePlayScreen
-  STA GameState
+  STA <GameState
   RTS
 
 SwitchToGameStatePlay:
   LDA #GameState_Play
-  STA GameState
+  STA <GameState
   RTS
 
 SwitchToGameStateInitializeGameOverScreen:
   LDA #GameState_InitializeGameGameOverScreen
-  STA GameState
+  STA <GameState
   RTS
 
 SwitchToGameStateGameOver:
   LDA #GameState_GameOver
-  STA GameState
+  STA <GameState
   RTS
 
 
 LoadStartBackground:
   LDA #LOW(StartBackground)
-  STA BackgroundPointer
+  STA <BackgroundPointer
   LDA #HIGH(StartBackground)
-  STA BackgroundPointer + 1
+  STA <BackgroundPointer + 1
   JSR LoadBackground
   RTS
 
 LoadPlayBackground:
   LDA #LOW(PlayBackground)
-  STA BackgroundPointer
+  STA <BackgroundPointer
   LDA #HIGH(PlayBackground)
-  STA BackgroundPointer + 1
+  STA <BackgroundPointer + 1
   JSR LoadBackground
   RTS
 
@@ -302,7 +302,7 @@ LoadBackgroundLoop:
   INY                         ; inside loop counter
   BNE LoadBackgroundLoop      ; run the inside loop 256 times before continuing down
   
-  INC BackgroundPointer + 1   ; low byte went 0 to 256, so high byte needs to be changed now
+  INC <BackgroundPointer + 1   ; low byte went 0 to 256, so high byte needs to be changed now
   
   DEX
   BNE LoadBackgroundLoop      ; Until X drops to #$00, we keep looping back for another 256 bytes.
@@ -316,7 +316,7 @@ TransferConveyorToPPU:
   STA $2006             ; write the low byte of PPU address
 
   LDX #$20
-  LDA ConveyorSprite
+  LDA <ConveyorSprite
 
 TransferConveyorToPPULoop:
   STA $2007
@@ -355,10 +355,10 @@ ReadControllers:
 ReadControllersLoop:
   LDA $4016
   LSR A               ; bit 0 -> Carry
-  ROL Player1Buttons  ; bit 0 <- Carry
+  ROL <Player1Buttons ; bit 0 <- Carry
   LDA $4017
   LSR A               ; bit 0 -> Carry
-  ROL Player2Buttons  ; bit 0 <- Carry
+  ROL <Player2Buttons ; bit 0 <- Carry
   DEX
   BNE ReadControllersLoop
   RTS
@@ -374,10 +374,10 @@ TransferGameSpritesToPPU:
 
 
 UpdatePaddles:
-  LDA Player1Buttons
+  LDA <Player1Buttons
   AND #ButtonLeft
   BNE MovePaddlesLeft
-  LDA Player1Buttons
+  LDA <Player1Buttons
   AND #ButtonRight
   BNE MovePaddlesRight
   RTS
@@ -386,19 +386,19 @@ MovePaddlesLeft:
   JSR InitializeMovingPaddles
   LDA [GameSpritePointer],Y
   SEC
-  SBC NormalPaddleSpeed
+  SBC <NormalPaddleSpeed
   BCS UseNormalLeftPaddleSpeed
 UseAdjustedLeftPaddleSpeed:
   LDA [GameSpritePointer],Y
-  STA CurrentPaddleSpeed
+  STA <CurrentPaddleSpeed
   JMP MovePaddlesLeftLoop
 UseNormalLeftPaddleSpeed:
-  LDA NormalPaddleSpeed
-  STA CurrentPaddleSpeed
+  LDA <NormalPaddleSpeed
+  STA <CurrentPaddleSpeed
 MovePaddlesLeftLoop:
   LDA [GameSpritePointer],Y
   SEC
-  SBC CurrentPaddleSpeed
+  SBC <CurrentPaddleSpeed
   STA [GameSpritePointer],Y
   JSR IncrementGameSpritePointerAndDecrementX
   BNE MovePaddlesLeftLoop
@@ -409,7 +409,7 @@ MovePaddlesRight:
   JSR InitializeMovingPaddles
   LDA [GameSpritePointer],Y
   CLC
-  ADC NormalPaddleSpeed
+  ADC <NormalPaddleSpeed
   CMP #$E0
   BCC UseNormalRightPaddleSpeed
 UseAdjustedRightPaddleSpeed:
@@ -423,19 +423,19 @@ UseAdjustedRightPaddleSpeed:
   ; CurrentPaddleSpeed.
   SEC
   SBC #$E0
-  STA CurrentPaddleSpeed
-  LDA NormalPaddleSpeed
+  STA <CurrentPaddleSpeed
+  LDA <NormalPaddleSpeed
   SEC
-  SBC CurrentPaddleSpeed
-  STA CurrentPaddleSpeed
+  SBC <CurrentPaddleSpeed
+  STA <CurrentPaddleSpeed
   JMP MovePaddlesRightLoop
 UseNormalRightPaddleSpeed:
-  LDA NormalPaddleSpeed
-  STA CurrentPaddleSpeed
+  LDA <NormalPaddleSpeed
+  STA <CurrentPaddleSpeed
 MovePaddlesRightLoop:
   LDA [GameSpritePointer],Y
   CLC
-  ADC CurrentPaddleSpeed
+  ADC <CurrentPaddleSpeed
   STA [GameSpritePointer],Y
   JSR IncrementGameSpritePointerAndDecrementX
   BNE MovePaddlesRightLoop
@@ -443,29 +443,29 @@ MovePaddlesRightLoop:
 
 InitializeMovingPaddles:
   LDA #HIGH(PaddleSpritesCPUAddress)
-  STA GameSpritePointer+1
+  STA <GameSpritePointer+1
   LDA #LOW(PaddleSpritesCPUAddress)
   CLC
   ADC #$03
-  STA GameSpritePointer
+  STA <GameSpritePointer
   LDY #$00
   LDX #20
   RTS
   
 IncrementGameSpritePointerAndDecrementX:
-  LDA GameSpritePointer
+  LDA <GameSpritePointer
   CLC
   ADC #$04
-  STA GameSpritePointer
-  LDA GameSpritePointer+1
+  STA <GameSpritePointer
+  LDA <GameSpritePointer+1
   ADC #$00
-  STA GameSpritePointer+1
+  STA <GameSpritePointer+1
   DEX
   RTS
 
 
 SwitchToPlayStateWhenStartIsPressed:
-  LDA Player1Buttons
+  LDA <Player1Buttons
   AND #ButtonStart
   BNE SwitchToPlayState
   RTS
@@ -475,27 +475,27 @@ SwitchToPlayState:
 
 
 UpdateConveyor:
-  LDX ConveyorFrameCount
+  LDX <ConveyorFrameCount
   INX
   CPX #ConveyorFrameSpeed
   BCS AdvanceConveyor
-  STX ConveyorFrameCount
+  STX <ConveyorFrameCount
   RTS
 AdvanceConveyor:
   LDX #$00
-  STX ConveyorFrameCount
-  LDX ConveyorSprite
+  STX <ConveyorFrameCount
+  LDX <ConveyorSprite
   CPX #ConveyorLastSprite
   BNE IncrementConveyorSprite
   LDX #ConveyorFirstSprite - 1
 IncrementConveyorSprite:
   INX
-  STX ConveyorSprite
+  STX <ConveyorSprite
   RTS
 
 
 GenerateRandomNumber:
-  LDA RandomNumber
+  LDA <RandomNumber
   BEQ DoEor
   ASL A
   BEQ SetRandomNumber
@@ -503,7 +503,7 @@ GenerateRandomNumber:
 DoEor:
   EOR #$1d
 SetRandomNumber:
-  STA RandomNumber
+  STA <RandomNumber
   RTS
 
 
