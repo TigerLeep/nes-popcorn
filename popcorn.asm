@@ -14,14 +14,14 @@ ButtonUp                                = %00001000
 ButtonDown                              = %00000100
 ButtonLeft                              = %00000010
 ButtonRight                             = %00000001
-PaddleSpritesCPUAddress                 = $0200
-GameState_InitializeGame                = 1
-GameState_InitializeGameStartScreen     = 2
-GameState_Start                         = 3
-GameState_IntializePlayScreen           = 4
-GameState_Play                          = 5
-GameState_InitializeGameGameOverScreen  = 6
-GameState_GameOver                      = 7
+PpuSpriteBuffer                         = $0200
+PpuDrawingBuffer                        = $0300
+GameState_InitializeStartScreen         = 1
+GameState_Start                         = 2
+GameState_IntializePlayScreen           = 3
+GameState_Play                          = 4
+GameState_InitializeGameOverScreen      = 5
+GameState_GameOver                      = 6
 PopcornState_Background                 = 1
 PopcornState_Falling                    = 2
 PopcornState_Conveyor                   = 3
@@ -33,55 +33,164 @@ ConveyorBackgroundPPUAddress            = $2340
 
 
   .rsset $0000
-BackgroundPointer       .rs 2
-GameSpritePointer       .rs 2
-Player1Buttons          .rs 1
-Player2Buttons          .rs 1
-NormalPaddleSpeed       .rs 1 ; Not to exceed $1F (31) or calculations for right wall limit fail. :)
-CurrentPaddleSpeed      .rs 1
-PaddleCount             .rs 1
-PopcornFrameSpeed       .rs 1 ; # frames before popcorn advances when falling
-PopcornPixelSpeed       .rs 1 ; # pixels popcorn advances when falling
-RandomNumber            .rs 1
-TempPointer             .rs 2
-GameState               .rs 1
-ConveyorSprite          .rs 1
-ConveyorFrameCount      .rs 1
+NmiNeedDma                  .rs 1
+NmiNeedDraw                 .rs 1
+NmiNeedPpuRegistersUpdated  .rs 1
+IsMainWaitingForNmiToFinish .rs 1
+Ppu2000Buffer               .rs 1
+Ppu2001Buffer               .rs 1
+PpuScrollXBuffer            .rs 1
+PpuScrollYBuffer            .rs 1
+BackgroundPointer           .rs 2
+GameSpritePointer           .rs 2
+Player1Buttons              .rs 1
+Player2Buttons              .rs 1
+NormalPaddleSpeed           .rs 1 ; Not to exceed $1F (31) or calculations for right wall limit fail. :)
+CurrentPaddleSpeed          .rs 1
+PaddleCount                 .rs 1
+PopcornFrameSpeed           .rs 1 ; # frames before popcorn advances when falling
+PopcornPixelSpeed           .rs 1 ; # pixels popcorn advances when falling
+RandomNumber                .rs 1
+TempPointer                 .rs 2
+GameState                   .rs 1
+ConveyorSprite              .rs 1
+ConveyorFrameCount          .rs 1
 
 
-  .rsset $0300
+  .rsset $0400
 PopcornState:       .rs 75
 PopcornPosition:    .rs 75
 
 
   .bank 0
-  .org $C000 
+  .org $C000
 
 
 ResetInterruptHandler:
   LDX #$FF
   TXS
-  SEI          ; disable IRQs
-  CLD          ; disable decimal mode
+  SEI                 ; disable IRQs
+  CLD                 ; disable decimal mode
   LDX #$00
-  STX $2000    ; disable NMI
+  STX $2000           ; disable NMI
   JSR DisableRendering
   JSR WaitForVBlank
   JSR ClearMemory
   JSR WaitForVBlank
   JSR InitializeVariables
+
+  LDA #%10000000      ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
+  STA $2000
+  LDA #$00            ; no scrolling so always set background display position to 0,0
+  STA $2005
+  STA $2005
+  JSR WaitForNextNmiToFinish
   JSR LoadPalettes
-  JSR InitializePPU
   JSR SwitchToGameStateInitializeStartScreen
-  JMP LoopForever
+  JMP Main
 
 
-NMIInterruptHandler:
+NmiInterruptHandler:
+  PHA                               ; back up registers (important)
+  TXA
+  PHA
+  TYA
+  PHA
+
+  LDA NmiNeedDma
+  BEQ DoneNeedDma
+  LDA #0                            ; do sprite DMA
+  STA $2003                         ; conditional via the 'needdma' flag
+  LDA #HIGH(PpuSpriteBuffer)
+  STA $4014
+DoneNeedDma:
+
+  LDA <NmiNeedDraw                  ; do other PPU drawing (NT/Palette/whathaveyou)
+  BEQ DoneNeedDraw                  ; conditional via the 'needdraw' flag
+  BIT $2002                         ; clear VBl flag, reset $2005/$2006 toggle
+  JSR XferDrawingsToPpu             ; draw the stuff from the drawing buffer
+  DEC <NmiNeedDraw
+DoneNeedDraw:
+
+  LDA <NmiNeedPpuRegistersUpdated
+  BEQ DoneNeedRegisters
+  LDA <Ppu2001Buffer                ; copy buffered $2000/$2001 (conditional via needppureg)
+  STA $2001
+  LDA <Ppu2000Buffer
+  STA $2000
+
+  BIT $2002
+  LDA <PpuScrollXBuffer             ; set X/Y scroll (conditional via needppureg)
+  STA $2005
+  LDA <PpuScrollYBuffer
+  STA $2005
+  DEC <NmiNeedPpuRegistersUpdated
+DoneNeedRegisters:
+
   JSR GenerateRandomNumber
+
+  LDA #0                            ; clear the Main Waiting flag so that Main will continue
+  STA <IsMainWaitingForNmiToFinish  ; note that you should not 'dec' here, as sleeping might
+                                    ; already be zero (will be the case during slowdown)
+
+  PLA                               ; restore regs and exit
+  TAY
+  PLA
+  TAX
+  PLA
+  RTI
+
+
+; Input data has the following format:           
+;   Byte 0  = length                             
+;   Byte 1  = high byte of the PPU address       
+;   Byte 2  = low byte of the PPU address        
+;   Byte 3  = reserved for now
+;   Byte 4+ = {length} bytes                     
+;                                                
+; Repeat until length == 0 is found.             
+;
+; Buffer starts at $0100, drawBuffer is declared as
+;
+;  .rsset $0100
+; drawBuffer .rs 160
+
+XferDrawingsToPpu:
+  LDX #$00 
+  LDA $2002                 ; read PPU status to reset the high/low latch        
+  
+XferDrawingsToPpuLoop:
+    
+  LDY PpuDrawingBuffer, x   ; load the length of the data to the Y register
+  BEQ DoneXferDrawingsToPpu ; length equal 0 means that the drawing is done  
+  
+  INX                       ; X = 1
+  LDA PpuDrawingBuffer, x   ; load the high byte of the target address
+  STA $2006                 ; write the high byte to PPU
+  
+  INX                       ; X = 2
+  LDA PpuDrawingBuffer, x   ; load the low byte of the target address
+  STA $2006                 ; write the low byte to PPU
+  
+  INX                       ; X = 3 (reserved for now)
+      
+XferDrawingToPpuLoop:
+  INX                       ; increment X so it points to the next byte
+  LDA PpuDrawingBuffer, x   ; load a byte of the data
+  STA $2007                 ; write it to PPU
+  DEY                       ; decrement Y
+  BNE XferDrawingToPpuLoop  ; if Y != 0 jump to .setLoop
+    
+  INX                       ; increment X so it points to the next segment      
+  JMP XferDrawingsToPpuLoop ; jump back to .drawLoop
+ 
+DoneXferDrawingsToPpu:
+  RTS
+
+
+Main:
   LDA <GameState
-  CMP #GameState_InitializeGame
-  BEQ HandleInitializeGame
-  CMP #GameState_InitializeGameStartScreen
+  CMP #GameState_InitializeStartScreen
   BEQ HandleInitializeStartScreen
   CMP #GameState_Start
   BEQ HandleStart
@@ -89,27 +198,26 @@ NMIInterruptHandler:
   BEQ HandleIntializePlayScreen
   CMP #GameState_Play
   BEQ HandlePlay
-  CMP #GameState_InitializeGameGameOverScreen
+  CMP #GameState_InitializeGameOverScreen
   BEQ HandleInitializeGameOverScreen
   CMP #GameState_GameOver
   BEQ HandleGameOver
-  RTI
-HandleInitializeGame:
-  RTI
+  JMP Main
 HandleInitializeStartScreen:
   JSR DisableRendering
   JSR LoadStartBackground
   JSR ClearSprites
   JSR SwitchToGameStateStart
-  RTI
+  JSR WaitForNextNmiToFinish
+  JSR EnableRendering
+  JMP Main
 HandleStart:
   JSR UpdateConveyor
-  JSR TransferConveyorToPPU
-  JSR TransferGameSpritesToPPU
   JSR ReadControllers
   JSR SwitchToPlayStateWhenStartIsPressed
+  JSR WaitForNextNmiToFinish
   JSR EnableRendering
-  RTI
+  JMP Main
 HandleIntializePlayScreen:
   JSR DisableRendering
   JSR LoadPlayBackground
@@ -118,8 +226,8 @@ HandleIntializePlayScreen:
   RTI
 HandlePlay:
   JSR UpdateConveyor
-  JSR TransferConveyorToPPU
-  JSR TransferGameSpritesToPPU
+  JSR XferConveyorToPPU
+  JSR XferGameSpritesToPPU
   JSR ReadControllers
   JSR UpdatePaddles
   JSR EnableRendering
@@ -127,7 +235,7 @@ HandlePlay:
 HandleInitializeGameOverScreen:
 HandleGameOver:
   JSR UpdateConveyor
-  JSR TransferConveyorToPPU
+  JSR XferConveyorToPPU
   RTI
 
 
@@ -166,6 +274,17 @@ InitializeVariables:
   LDX #$00
   STX <ConveyorFrameCount
   JSR InitializePopcorn
+
+
+  STX <NmiNeedDma
+  STX <NmiNeedDraw
+  STX <NmiNeedPpuRegistersUpdated
+  STX <IsMainWaitingForNmiToFinish
+  STX <Ppu2000Buffer
+  STX <Ppu2001Buffer
+  STX <PpuScrollXBuffer
+  STX <PpuScrollYBuffer
+
   RTS
 
 
@@ -202,6 +321,7 @@ ClearSpritesLoop:
   STA $0200, x
   INX
   BNE ClearSpritesLoop
+  INC NmiNeedDma
   RTS
 
 
@@ -233,13 +353,8 @@ LoadInitialPaddleSpritesLoop:
   RTS
 
 
-SwitchToGameStateInitialize:
-  LDA #GameState_InitializeGame
-  STA <GameState
-  RTS
-
 SwitchToGameStateInitializeStartScreen:
-  LDA #GameState_InitializeGameStartScreen
+  LDA #GameState_InitializeStartScreen
   STA <GameState
   RTS
 
@@ -259,7 +374,7 @@ SwitchToGameStatePlay:
   RTS
 
 SwitchToGameStateInitializeGameOverScreen:
-  LDA #GameState_InitializeGameGameOverScreen
+  LDA #GameState_InitializeGameOverScreen
   STA <GameState
   RTS
 
@@ -308,7 +423,7 @@ LoadBackgroundLoop:
   BNE LoadBackgroundLoop      ; Until X drops to #$00, we keep looping back for another 256 bytes.
   RTS
 
-TransferConveyorToPPU:
+XferConveyorToPPU:
   LDA $2002             ; read PPU status to reset the high/low latch
   LDA #HIGH(ConveyorBackgroundPPUAddress)
   STA $2006             ; write the high byte of PPU address
@@ -318,25 +433,15 @@ TransferConveyorToPPU:
   LDX #$20
   LDA <ConveyorSprite
 
-TransferConveyorToPPULoop:
+XferConveyorToPPULoop:
   STA $2007
   DEX
-  BNE TransferConveyorToPPULoop
+  BNE XferConveyorToPPULoop
   LDA $2002             ; read PPU status to reset the high/low latch
   LDA #$20
   STA $2006             ; write the high byte of PPU address
   LDA #$00
   STA $2006             ; write the low byte of PPU address
-  RTS
-
-
-InitializePPU:
-  LDA #%10000000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
-  STA $2000
-  JSR EnableRendering
-  LDA #$00         ; No scrolling so always set background display position to 0,0
-  STA $2005
-  STA $2005
   RTS
 
 
@@ -364,8 +469,8 @@ ReadControllersLoop:
   RTS
 
 
-TransferGameSpritesToPPU:
-  ; Transfer game sprites to PPU
+XferGameSpritesToPPU:
+  ; Xfer game sprites to PPU
   LDA #$00
   STA $2003       ; set the low byte (00) of the RAM address
   LDA #$02
@@ -442,9 +547,9 @@ MovePaddlesRightLoop:
   RTS
 
 InitializeMovingPaddles:
-  LDA #HIGH(PaddleSpritesCPUAddress)
+  LDA #HIGH(PpuSpriteBuffer)
   STA <GameSpritePointer+1
-  LDA #LOW(PaddleSpritesCPUAddress)
+  LDA #LOW(PpuSpriteBuffer)
   CLC
   ADC #$03
   STA <GameSpritePointer
@@ -485,13 +590,19 @@ AdvanceConveyor:
   LDX #$00
   STX <ConveyorFrameCount
   LDX <ConveyorSprite
-  CPX #ConveyorLastSprite
-  BNE IncrementConveyorSprite
-  LDX #ConveyorFirstSprite - 1
-IncrementConveyorSprite:
   INX
+  CPX #ConveyorLastSprite + 1
+  BNE UpdateConveyorContinue
+  LDX #ConveyorFirstSprite
+UpdateConveyorContinue:
   STX <ConveyorSprite
+  JSR BufferConveyor
   RTS
+
+BufferConveyor:
+  ; TODO: Add Conveyor drawing to PpuDrawingBuffer and flag NmiNeedDraw
+  ; 
+
 
 
 GenerateRandomNumber:
@@ -504,6 +615,13 @@ DoEor:
   EOR #$1d
 SetRandomNumber:
   STA <RandomNumber
+  RTS
+
+WaitForNextNmiToFinish:
+  INC IsMainWaitingForNmiToFinish
+WaitForNextNmiToFinishLoop:
+  LDA IsMainWaitingForNmiToFinish
+  BNE WaitForNextNmiToFinishLoop
   RTS
 
 
@@ -572,7 +690,7 @@ PopcornStartY:
 
 
   .org $FFFA
-  .dw NMIInterruptHandler   ; When VBlank begins
+  .dw NmiInterruptHandler   ; When VBlank begins
   .dw ResetInterruptHandler ; When the processor first turns on or is reset
   .dw 0                     ; External interrupt IRQ is not used
   
