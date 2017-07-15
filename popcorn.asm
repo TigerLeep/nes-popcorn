@@ -81,9 +81,11 @@ ResetInterruptHandler:
 
   LDA #%10000000      ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
   STA $2000
+  STA <Ppu2000Buffer
   LDA #$00            ; no scrolling so always set background display position to 0,0
-  STA $2005
-  STA $2005
+  STA <PpuScrollXBuffer
+  STA <PpuScrollYBuffer
+  INC NmiNeedPpuRegistersUpdated
   JSR WaitForNextNmiToFinish
   JSR LoadPalettes
   JSR SwitchToGameStateInitializeStartScreen
@@ -97,12 +99,13 @@ NmiInterruptHandler:
   TYA
   PHA
 
-  LDA NmiNeedDma
+  LDA <NmiNeedDma
   BEQ DoneNeedDma
   LDA #0                            ; do sprite DMA
   STA $2003                         ; conditional via the 'needdma' flag
   LDA #HIGH(PpuSpriteBuffer)
   STA $4014
+  DEC <NmiNeedDma
 DoneNeedDma:
 
   LDA <NmiNeedDraw                  ; do other PPU drawing (NT/Palette/whathaveyou)
@@ -112,8 +115,6 @@ DoneNeedDma:
   DEC <NmiNeedDraw
 DoneNeedDraw:
 
-  LDA <NmiNeedPpuRegistersUpdated
-  BEQ DoneNeedRegisters
   LDA <Ppu2001Buffer                ; copy buffered $2000/$2001 (conditional via needppureg)
   STA $2001
   LDA <Ppu2000Buffer
@@ -161,22 +162,22 @@ XferDrawingsToPpu:
   
 XferDrawingsToPpuLoop:
     
-  LDY PpuDrawingBuffer, x   ; load the length of the data to the Y register
+  LDY PpuDrawingBuffer, X   ; load the length of the data to the Y register
   BEQ DoneXferDrawingsToPpu ; length equal 0 means that the drawing is done  
   
   INX                       ; X = 1
-  LDA PpuDrawingBuffer, x   ; load the high byte of the target address
+  LDA PpuDrawingBuffer, X   ; load the high byte of the target address
   STA $2006                 ; write the high byte to PPU
   
   INX                       ; X = 2
-  LDA PpuDrawingBuffer, x   ; load the low byte of the target address
+  LDA PpuDrawingBuffer, X   ; load the low byte of the target address
   STA $2006                 ; write the low byte to PPU
   
   INX                       ; X = 3 (reserved for now)
       
 XferDrawingToPpuLoop:
   INX                       ; increment X so it points to the next byte
-  LDA PpuDrawingBuffer, x   ; load a byte of the data
+  LDA PpuDrawingBuffer, X   ; load a byte of the data
   STA $2007                 ; write it to PPU
   DEY                       ; decrement Y
   BNE XferDrawingToPpuLoop  ; if Y != 0 jump to .setLoop
@@ -216,31 +217,27 @@ HandleStart:
   JSR ReadControllers
   JSR SwitchToPlayStateWhenStartIsPressed
   JSR WaitForNextNmiToFinish
-  JSR EnableRendering
   JMP Main
 HandleIntializePlayScreen:
   JSR DisableRendering
   JSR LoadPlayBackground
   JSR LoadInitialPaddleSprites
   JSR SwitchToGameStatePlay
-  RTI
+  JSR WaitForNextNmiToFinish
+  JSR EnableRendering
+  JMP Main
 HandlePlay:
   JSR UpdateConveyor
-  JSR XferConveyorToPPU
-  JSR XferGameSpritesToPPU
-  JSR ReadControllers
   JSR UpdatePaddles
-  JSR EnableRendering
-  RTI
+  JSR ReadControllers
+  JSR WaitForNextNmiToFinish
+  JMP Main
 HandleInitializeGameOverScreen:
 HandleGameOver:
   JSR UpdateConveyor
-  JSR XferConveyorToPPU
-  RTI
-
-
-LoopForever:
-  JMP LoopForever
+  JSR ReadControllers
+  JSR WaitForNextNmiToFinish
+  JMP Main
 
 
 DisableRendering:
@@ -280,10 +277,12 @@ InitializeVariables:
   STX <NmiNeedDraw
   STX <NmiNeedPpuRegistersUpdated
   STX <IsMainWaitingForNmiToFinish
-  STX <Ppu2000Buffer
-  STX <Ppu2001Buffer
   STX <PpuScrollXBuffer
   STX <PpuScrollYBuffer
+  LDX #%10000000
+  STX <Ppu2000Buffer
+  LDX #%00011110
+  STX <Ppu2001Buffer
 
   RTS
 
@@ -321,7 +320,7 @@ ClearSpritesLoop:
   STA $0200, x
   INX
   BNE ClearSpritesLoop
-  INC NmiNeedDma
+  INC <NmiNeedDma
   RTS
 
 
@@ -345,11 +344,12 @@ LoadPalettesLoop:
 LoadInitialPaddleSprites:
   LDX #$00
 LoadInitialPaddleSpritesLoop:
-  LDA PaddleSprites, x
-  STA $0200, x
+  LDA PaddleSprites, X
+  STA PpuSpriteBuffer, X
   INX
   CPX #80
   BNE LoadInitialPaddleSpritesLoop
+  INC NmiNeedDma
   RTS
 
 
@@ -423,28 +423,6 @@ LoadBackgroundLoop:
   BNE LoadBackgroundLoop      ; Until X drops to #$00, we keep looping back for another 256 bytes.
   RTS
 
-XferConveyorToPPU:
-  LDA $2002             ; read PPU status to reset the high/low latch
-  LDA #HIGH(ConveyorBackgroundPPUAddress)
-  STA $2006             ; write the high byte of PPU address
-  LDA #LOW(ConveyorBackgroundPPUAddress)
-  STA $2006             ; write the low byte of PPU address
-
-  LDX #$20
-  LDA <ConveyorSprite
-
-XferConveyorToPPULoop:
-  STA $2007
-  DEX
-  BNE XferConveyorToPPULoop
-  LDA $2002             ; read PPU status to reset the high/low latch
-  LDA #$20
-  STA $2006             ; write the high byte of PPU address
-  LDA #$00
-  STA $2006             ; write the low byte of PPU address
-  RTS
-
-
 ReadControllers:
   LDA #$01
   STA $4016 ; Start controller button states being continuously written to $4016 and $4017
@@ -466,15 +444,6 @@ ReadControllersLoop:
   ROL <Player2Buttons ; bit 0 <- Carry
   DEX
   BNE ReadControllersLoop
-  RTS
-
-
-XferGameSpritesToPPU:
-  ; Xfer game sprites to PPU
-  LDA #$00
-  STA $2003       ; set the low byte (00) of the RAM address
-  LDA #$02
-  STA $4014       ; set the high byte (02) of the RAM address, start the transfer
   RTS
 
 
@@ -507,6 +476,7 @@ MovePaddlesLeftLoop:
   STA [GameSpritePointer],Y
   JSR IncrementGameSpritePointerAndDecrementX
   BNE MovePaddlesLeftLoop
+  INC NmiNeedDma
   RTS
 
 
@@ -544,6 +514,7 @@ MovePaddlesRightLoop:
   STA [GameSpritePointer],Y
   JSR IncrementGameSpritePointerAndDecrementX
   BNE MovePaddlesRightLoop
+  INC NmiNeedDma
   RTS
 
 InitializeMovingPaddles:
@@ -600,9 +571,31 @@ UpdateConveyorContinue:
   RTS
 
 BufferConveyor:
-  ; TODO: Add Conveyor drawing to PpuDrawingBuffer and flag NmiNeedDraw
-  ; 
-
+  ;   Byte 0  = length                             
+  ;   Byte 1  = high byte of the PPU address       
+  ;   Byte 2  = low byte of the PPU address        
+  ;   Byte 3  = reserved for now
+  ;   Byte 4+ = {length} bytes
+  LDA #$20
+  LDX #$00
+  STA PpuDrawingBuffer, X
+  INX
+  LDA #HIGH(ConveyorBackgroundPPUAddress)
+  STA PpuDrawingBuffer, X
+  INX
+  LDA #LOW(ConveyorBackgroundPPUAddress)
+  STA PpuDrawingBuffer, X
+  INX
+  INX
+  LDY #$20
+  LDA ConveyorSprite
+BufferConveyorLoop:
+  STA PpuDrawingBuffer, X
+  INX
+  DEY
+  BNE BufferConveyorLoop
+  INC NmiNeedDraw
+  RTS
 
 
 GenerateRandomNumber:
