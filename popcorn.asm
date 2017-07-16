@@ -25,42 +25,43 @@ GameState_GameOver                      = 6
 PopcornState_Background                 = 1
 PopcornState_Falling                    = 2
 PopcornState_Conveyor                   = 3
-ConveyorFrameSpeed                      = 2 ; # frames before conveyor (and popcorn on conveyor) advances
-ConveyorFirstSprite                     = $0B
-ConveyorLastSprite                      = $0E
-ConveyorBackgroundPPUAddress            = $2340
+ConveyorFrameSpeed                      = 2     ; # of frames before Conveyor (and Popcorn on Conveyor) advances
+ConveyorFirstTile                       = $0B   ; First tile # in Conveyor animation
+ConveyorLastTile                        = $0E   ; Last tile # in Conveyor animation
+ConveyorBackgroundPPUAddress            = $2340 ; Start address in PPU of Conveyor tiles to update when animating the Conveyor
 
 
   .rsset $0000
-NmiNeedDma                  .rs 1
-NmiNeedDraw                 .rs 1
-NmiNeedPpuRegistersUpdated  .rs 1
-IsMainWaitingForNmiToFinish .rs 1
-Ppu2000Buffer               .rs 1
-Ppu2001Buffer               .rs 1
-PpuScrollXBuffer            .rs 1
-PpuScrollYBuffer            .rs 1
-BackgroundPointer           .rs 2
-GameSpritePointer           .rs 2
-Player1Buttons              .rs 1
-Player2Buttons              .rs 1
-NormalPaddleSpeed           .rs 1 ; Not to exceed $1F (31) or calculations for right wall limit fail. :)
-CurrentPaddleSpeed          .rs 1
-PaddleCount                 .rs 1
-PopcornFrameSpeed           .rs 1 ; # frames before popcorn advances when falling
-PopcornPixelSpeed           .rs 1 ; # pixels popcorn advances when falling
-RandomNumber                .rs 1
-TempPointer                 .rs 2
-Temp                        .rs 1
-GameState                   .rs 1
-ConveyorSprite              .rs 1
-ConveyorFrameCount          .rs 1
-ActivePopcornIndex          .rs 1   ; Index into ActivePopcornStates where falling popcorn start (0-14)
-ActivePopcornCount          .rs 1   ; Number of popcorns from ActivePopcornIndex that are falling or on conveyor
-ActivePopcornRow            .rs 1   ; Active row popcorn is falling from (0-4).  Sprite is Row*2 (0, 2, 4, 6 or 8)
-ActivePopcornColumns        .rs 15  ; Column # (0-14).  Filled with shuffled 0-14.  Indicates the order popcorn falls in row.
-ActivePopcornPositions      .rs 15  ; Y when State is Background or Falling, X when State is Conveyor
-ActivePopcornStates         .rs 15  ; Background, Falling, or Conveyor
+NmiNeedDma                    .rs 1
+NmiNeedDraw                   .rs 1
+NmiNeedPpuRegistersUpdated    .rs 1
+IsMainWaitingForNmiToFinish   .rs 1
+Ppu2000Buffer                 .rs 1
+Ppu2001Buffer                 .rs 1
+PpuScrollXBuffer              .rs 1
+PpuScrollYBuffer              .rs 1
+BackgroundPointer             .rs 2
+GameSpritePointer             .rs 2
+Player1Buttons                .rs 1
+Player2Buttons                .rs 1
+NormalPaddleSpeed             .rs 1   ; Not to exceed $1F (31) or calculations for right wall limit fail. :)
+CurrentPaddleSpeed            .rs 1
+PaddleCount                   .rs 1
+ActivePopcornFrameSpeed       .rs 1   ; # frames before popcorn advances when falling
+ActivePopcornPixelSpeed       .rs 1   ; # pixels popcorn advances when falling
+ActivePopcornFrameCount       .rs 1   ; # of frames since last Popcorn advance
+RandomNumber                  .rs 1
+TempPointer                   .rs 2
+Temp                          .rs 1
+GameState                     .rs 1
+ConveyorTile                  .rs 1   ; Current Conveyor tile in conveyor animation
+ConveyorFrameCount            .rs 1   ; # of frames since last Conveyor advance
+ActivePopcornIndex            .rs 1   ; Index into ActivePopcornStates where falling popcorn start (0-14)
+ActivePopcornCount            .rs 1   ; # of popcorns from ActivePopcornIndex that are falling or on conveyor
+ActivePopcornRow              .rs 1   ; Active row popcorn is falling from (0-4).  Tile is Row*2 (0, 2, 4, 6 or 8)
+ActivePopcornColumns          .rs 15  ; Column # (0-14).  Filled with shuffled 0-14.  Indicates the order popcorn falls in row.
+ActivePopcornPositions        .rs 15  ; Y when State is Background or Falling, X when State is Conveyor
+ActivePopcornStates           .rs 15  ; Background, Falling, or Conveyor
 
   .bank 0
   .org $C000
@@ -264,11 +265,11 @@ InitializeVariables:
   LDX #$05
   STX <PaddleCount
   LDX #$18
-  STX <PopcornFrameSpeed
+  STX <ActivePopcornFrameSpeed
   LDX #$01
-  STX <PopcornPixelSpeed
-  LDX #ConveyorFirstSprite
-  STX <ConveyorSprite
+  STX <ActivePopcornPixelSpeed
+  LDX #ConveyorFirstTile
+  STX <ConveyorTile
   LDX #$00
   STX <ConveyorFrameCount
   STX <NmiNeedDma
@@ -553,13 +554,13 @@ UpdateConveyor:
 AdvanceConveyor:
   LDX #$00
   STX <ConveyorFrameCount
-  LDX <ConveyorSprite
+  LDX <ConveyorTile
   INX
-  CPX #ConveyorLastSprite + 1
+  CPX #ConveyorLastTile + 1
   BNE UpdateConveyorContinue
-  LDX #ConveyorFirstSprite
+  LDX #ConveyorFirstTile
 UpdateConveyorContinue:
-  STX <ConveyorSprite
+  STX <ConveyorTile
   JSR BufferConveyor
   RTS
 
@@ -581,7 +582,7 @@ BufferConveyor:
   INX
   INX
   LDY #$20
-  LDA ConveyorSprite
+  LDA ConveyorTile
 BufferConveyorLoop:
   STA PpuDrawingBuffer, X
   INX
