@@ -25,7 +25,6 @@ GameState_GameOver                      = 6
 PopcornState_Background                 = 1
 PopcornState_Falling                    = 2
 PopcornState_Conveyor                   = 3
-PopcornState_ExParrot                   = 4
 ConveyorFrameSpeed                      = 2 ; # frames before conveyor (and popcorn on conveyor) advances
 ConveyorFirstSprite                     = $0B
 ConveyorLastSprite                      = $0E
@@ -52,15 +51,16 @@ PopcornFrameSpeed           .rs 1 ; # frames before popcorn advances when fallin
 PopcornPixelSpeed           .rs 1 ; # pixels popcorn advances when falling
 RandomNumber                .rs 1
 TempPointer                 .rs 2
+Temp                        .rs 1
 GameState                   .rs 1
 ConveyorSprite              .rs 1
 ConveyorFrameCount          .rs 1
-
-
-  .rsset $0400
-PopcornState:       .rs 75
-PopcornPosition:    .rs 75
-
+ActivePopcornIndex          .rs 1   ; Index into ActivePopcornStates where falling popcorn start (0-14)
+ActivePopcornCount          .rs 1   ; Number of popcorns from ActivePopcornIndex that are falling or on conveyor
+ActivePopcornRow            .rs 1   ; Active row popcorn is falling from (0-4).  Sprite is Row*2 (0, 2, 4, 6 or 8)
+ActivePopcornColumns        .rs 15  ; Column # (0-14).  Filled with shuffled 0-14.  Indicates the order popcorn falls in row.
+ActivePopcornPositions      .rs 15  ; Y when State is Background or Falling, X when State is Conveyor
+ActivePopcornStates         .rs 15  ; Background, Falling, or Conveyor
 
   .bank 0
   .org $C000
@@ -223,6 +223,7 @@ HandleIntializePlayScreen:
   JSR LoadPlayBackground
   JSR LoadInitialPaddleSprites
   JSR SwitchToGameStatePlay
+  JSR InitializePopcorn
   JSR WaitForNextNmiToFinish
   JSR EnableRendering
   JMP Main
@@ -270,9 +271,6 @@ InitializeVariables:
   STX <ConveyorSprite
   LDX #$00
   STX <ConveyorFrameCount
-  JSR InitializePopcorn
-
-
   STX <NmiNeedDma
   STX <NmiNeedDraw
   STX <NmiNeedPpuRegistersUpdated
@@ -288,14 +286,9 @@ InitializeVariables:
 
 
 InitializePopcorn:
-  LDX #75
-InitializePopcornLoop:
-  LDA #PopcornState_Background
-  STA PopcornState, X
-  LDA PopcornStartY, X
-  STA PopcornPosition, X
-  DEX
-  BNE InitializePopcornLoop
+  LDX #05
+  STX <ActivePopcornRow
+  JSR AdvanceToNextPopcornRow
   RTS
 
 ClearMemory:
@@ -598,7 +591,66 @@ BufferConveyorLoop:
   RTS
 
 
+AdvanceToNextPopcornRow:
+  DEC <ActivePopcornRow
+  LDX #15
+  STX <ActivePopcornIndex
+  LDX #$00
+  STX <ActivePopcornCount
+  JSR InitializeActivePopcornRow
+  ;JSR ShuffleActivePopcornPosits
+  JMP ShuffleActivePopcornPosits
+
+
+InitializeActivePopcornRow:
+  LDX #00
+InitializeActivePopcornRowLoop:
+  LDA #PopcornState_Background
+  STA <ActivePopcornStates, X
+  LDY <ActivePopcornRow
+  LDA PopcornStartY, Y
+  STA <ActivePopcornPositions, X
+  TXA
+  STA <ActivePopcornColumns, X
+  INX
+  CPX #15
+  BNE InitializeActivePopcornRowLoop
+  RTS
+
+
+ShuffleActivePopcornPosits:
+  LDA #00
+ShuffleActivePopcornPositsLoop:
+  PHA
+  JSR GenerateRandomNumber
+  LDA <RandomNumber
+GetValidRandomNumber:
+  CMP #15
+  BCC GotValidRandomNumber
+  SEC
+  SBC #14
+  JMP GetValidRandomNumber
+GotValidRandomNumber:
+  TAY
+  PLA
+  TAX ; X and Y hold the indexes of the two Position elements to swap
+  LDA <ActivePopcornColumns, X
+  STA <Temp
+  LDA ActivePopcornColumns, Y
+  STA <ActivePopcornColumns, X
+  LDA <Temp
+  STA ActivePopcornColumns, Y
+
+  TXA
+  CLC
+  ADC #01
+  CMP #15
+  BNE ShuffleActivePopcornPositsLoop
+  RTS
+
+
 GenerateRandomNumber:
+  PHA
   LDA <RandomNumber
   BEQ DoEor
   ASL A
@@ -608,6 +660,7 @@ DoEor:
   EOR #$1d
 SetRandomNumber:
   STA <RandomNumber
+  PLA
   RTS
 
 WaitForNextNmiToFinish:
@@ -662,24 +715,11 @@ PaddleSprites:
   .db $C7, $0A, $00, $80
   .db $C7, $0A, $00, $88
 
-PopcornSprite:
-  .db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-  .db $02, $02, $02, $02, $02, $02, $02, $02, $02, $02, $02, $02, $02, $02, $02
-  .db $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04
-  .db $06, $06, $06, $06, $06, $06, $06, $06, $06, $06, $06, $06, $06, $06, $06
-  .db $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08
-PopcornStartX:
+PopcornStartX:  ; Indexed by column (0-14)
   .db $08, $18, $28, $38, $48, $58, $68, $78, $88, $98, $A8, $B8, $C8, $D8, $E8
-  .db $08, $18, $28, $38, $48, $58, $68, $78, $88, $98, $A8, $B8, $C8, $D8, $E8
-  .db $08, $18, $28, $38, $48, $58, $68, $78, $88, $98, $A8, $B8, $C8, $D8, $E8
-  .db $08, $18, $28, $38, $48, $58, $68, $78, $88, $98, $A8, $B8, $C8, $D8, $E8
-  .db $08, $18, $28, $38, $48, $58, $68, $78, $88, $98, $A8, $B8, $C8, $D8, $E8
-PopcornStartY:
-  .db $05, $05, $05, $05, $05, $05, $05, $05, $05, $05, $05, $05, $05, $05, $05
-  .db $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D, $0D
-  .db $15, $15, $15, $15, $15, $15, $15, $15, $15, $15, $15, $15, $15, $15, $15
-  .db $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D, $1D
-  .db $25, $25, $25, $25, $25, $25, $25, $25, $25, $25, $25, $25, $25, $25, $25
+
+PopcornStartY:  ; Indexed by Row (0-4)
+  .db $05, $0D, $15,$1D, $25
 
 
   .org $FFFA
