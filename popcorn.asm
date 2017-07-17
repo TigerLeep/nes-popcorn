@@ -16,6 +16,7 @@ ButtonLeft                              = %00000010
 ButtonRight                             = %00000001
 PpuSpriteBuffer                         = $0200
 PpuDrawingBuffer                        = $0300
+BlankTile                               = $FF
 GameState_InitializeStartScreen         = 1
 GameState_Start                         = 2
 GameState_IntializePlayScreen           = 3
@@ -47,9 +48,6 @@ Player2Buttons                .rs 1
 NormalPaddleSpeed             .rs 1   ; Not to exceed $1F (31) or calculations for right wall limit fail. :)
 CurrentPaddleSpeed            .rs 1
 PaddleCount                   .rs 1
-ActivePopcornFrameSpeed       .rs 1   ; # frames before popcorn advances when falling
-ActivePopcornPixelSpeed       .rs 1   ; # pixels popcorn advances when falling
-ActivePopcornFrameCount       .rs 1   ; # of frames since last Popcorn advance
 RandomNumber                  .rs 1
 TempPointer                   .rs 2
 Temp                          .rs 1
@@ -59,6 +57,9 @@ ConveyorFrameCount            .rs 1   ; # of frames since last Conveyor advance
 ActivePopcornIndex            .rs 1   ; Index into ActivePopcornStates where falling popcorn start (0-14)
 ActivePopcornCount            .rs 1   ; # of popcorns from ActivePopcornIndex that are falling or on conveyor
 ActivePopcornRow              .rs 1   ; Active row popcorn is falling from (0-4).  Tile is Row*2 (0, 2, 4, 6 or 8)
+ActivePopcornFrameSpeed       .rs 1   ; # frames before popcorn advances when falling
+ActivePopcornPixelSpeed       .rs 1   ; # pixels popcorn advances when falling
+ActivePopcornFrameCount       .rs 1   ; # of frames since last Popcorn advance
 ActivePopcornColumns          .rs 15  ; Column # (0-14).  Filled with shuffled 0-14.  Indicates the order popcorn falls in row.
 ActivePopcornPositions        .rs 15  ; Y when State is Background or Falling, X when State is Conveyor
 ActivePopcornStates           .rs 15  ; Background, Falling, or Conveyor
@@ -151,18 +152,11 @@ DoneNeedRegisters:
 ;   Byte 4+ = {length} bytes                     
 ;                                                
 ; Repeat until length == 0 is found.             
-;
-; Buffer starts at $0100, drawBuffer is declared as
-;
-;  .rsset $0100
-; drawBuffer .rs 160
-
 XferDrawingsToPpu:
-  LDX #$00 
-  LDA $2002                 ; read PPU status to reset the high/low latch        
-  
+  LDX #$00
+  LDA $2002                 ; read PPU status to reset the high/low latch
+
 XferDrawingsToPpuLoop:
-    
   LDY PpuDrawingBuffer, X   ; load the length of the data to the Y register
   BEQ DoneXferDrawingsToPpu ; length equal 0 means that the drawing is done  
   
@@ -187,6 +181,8 @@ XferDrawingToPpuLoop:
   JMP XferDrawingsToPpuLoop ; jump back to .drawLoop
  
 DoneXferDrawingsToPpu:
+  LDA #$00
+  STA PpuDrawingBuffer ; Reset buffer
   RTS
 
 
@@ -225,6 +221,7 @@ HandleIntializePlayScreen:
   JSR LoadInitialPaddleSprites
   JSR SwitchToGameStatePlay
   JSR InitializePopcorn
+  JSR StartNextPopcornDropping
   JSR WaitForNextNmiToFinish
   JSR EnableRendering
   JMP Main
@@ -570,8 +567,8 @@ BufferConveyor:
   ;   Byte 2  = low byte of the PPU address        
   ;   Byte 3  = reserved for now
   ;   Byte 4+ = {length} bytes
+  JSR SetXToNextDrawingBuffer
   LDA #$20
-  LDX #$00
   STA PpuDrawingBuffer, X
   INX
   LDA #HIGH(ConveyorBackgroundPPUAddress)
@@ -588,7 +585,10 @@ BufferConveyorLoop:
   INX
   DEY
   BNE BufferConveyorLoop
-  INC NmiNeedDraw
+  LDA #$00
+  STA PpuDrawingBuffer, X;  Flag end of buffers
+  LDA #$01
+  STA <NmiNeedDraw
   RTS
 
 
@@ -609,7 +609,7 @@ InitializeActivePopcornRowLoop:
   LDA #PopcornState_Background
   STA <ActivePopcornStates, X
   LDY <ActivePopcornRow
-  LDA PopcornStartY, Y
+  LDA PopcornSpriteStartY, Y
   STA <ActivePopcornPositions, X
   TXA
   STA <ActivePopcornColumns, X
@@ -647,6 +647,69 @@ GotValidRandomNumber:
   ADC #01
   CMP #15
   BNE ShuffleActivePopcornPositsLoop
+  RTS
+
+
+StartNextPopcornDropping:
+  DEC <ActivePopcornIndex
+  INC <ActivePopcornCount
+  LDX <ActivePopcornIndex
+  LDA #PopcornState_Falling
+  STA <ActivePopcornStates, X
+
+ClearIndexPopcornFromBackground:
+  LDX <ActivePopcornIndex
+  LDA <ActivePopcornColumns, X
+  ASL A
+  LDY <ActivePopcornRow
+  CLC
+  ADC PopcornBackgroundRowOffsets, Y
+  STA <TempPointer+1
+  LDA #$20
+  STA <TempPointer
+
+BufferPopcornBlanking:
+  ;   Byte 0  = length                             
+  ;   Byte 1  = high byte of the PPU address       
+  ;   Byte 2  = low byte of the PPU address        
+  ;   Byte 3  = reserved for now
+  ;   Byte 4+ = {length} bytes
+  JSR SetXToNextDrawingBuffer
+  LDA #$02
+  STA PpuDrawingBuffer, X
+  INX
+  LDA <TempPointer
+  STA PpuDrawingBuffer, X
+  INX
+  LDA <TempPointer+1
+  STA PpuDrawingBuffer, X
+  INX
+  INX
+  LDA #BlankTile
+  STA PpuDrawingBuffer, X
+  INX
+  STA PpuDrawingBuffer, X
+  INX
+  LDA #$00
+  STA PpuDrawingBuffer, X;  Flag end of buffers
+  LDA #$01
+  STA <NmiNeedDraw
+  RTS
+
+
+SetXToNextDrawingBuffer:
+  LDX #$00
+  TXA
+SetXToNextDrawingBufferLoop:
+  LDY PpuDrawingBuffer, X ; Length of this buffer's data
+  BEQ SetXToNextDrawingBufferDone
+  CLC
+  ADC 4
+  CLC
+  ADC PpuDrawingBuffer, X
+  TXA
+  JMP SetXToNextDrawingBufferLoop
+SetXToNextDrawingBufferDone:
   RTS
 
 
@@ -716,10 +779,13 @@ PaddleSprites:
   .db $C7, $0A, $00, $80
   .db $C7, $0A, $00, $88
 
-PopcornStartX:  ; Indexed by column (0-14)
+PopcornBackgroundRowOffsets:  ; Indexed by Row (0-4)
+  .db $21, $41, $61,$81, $A1
+
+PopcornSpriteStartX:  ; Indexed by column (0-14)
   .db $08, $18, $28, $38, $48, $58, $68, $78, $88, $98, $A8, $B8, $C8, $D8, $E8
 
-PopcornStartY:  ; Indexed by Row (0-4)
+PopcornSpriteStartY:  ; Indexed by Row (0-4)
   .db $05, $0D, $15,$1D, $25
 
 
