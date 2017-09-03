@@ -1,1 +1,1 @@
-fceux.exe .\popcorn.nes
+fceux.exe .\bin\popcorn.nes

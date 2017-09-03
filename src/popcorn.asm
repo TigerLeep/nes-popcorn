@@ -1,79 +1,76 @@
-  .inesprg 1   ; 1x 16KB PRG code
-  .ineschr 1   ; 1x  8KB CHR data
-  .inesmap 0   ; mapper 0 = NROM, no bank swapping
-  .inesmir 1   ; background mirroring
-  
+.segment "HEADER"
+	.byte	"NES", $1A	; iNES header identifier
+	.byte	1		; 1x 16KB PRG code
+	.byte	1		; 1x  8KB CHR data
+	.byte	$01, $00	; mapper 0, vertical mirroring
 
-;;;;;;;;;;;;;;;
+.segment "STARTUP"
 
-ButtonA                       = %10000000
-ButtonB                       = %01000000
-ButtonSelect                  = %00100000
-ButtonStart                   = %00010000
-ButtonUp                      = %00001000
-ButtonDown                    = %00000100
-ButtonLeft                    = %00000010
-ButtonRight                   = %00000001
-PpuSpriteBuffer               = $0200 ; Must be $XX00.  When high byte written to OAMDMA ($4014), $FF bytes will be copied from $XX00 to OAM.
-PpuDrawingBuffer              = $0300
-BlankTile                     = $FF
-GameState_InitializeStart     = 1
-GameState_Start               = 2
-GameState_InitializePlay      = 3
-GameState_Play                = 4
-GameState_InitializeGameOver  = 5
-GameState_GameOver            = 6
-PopcornState_Background       = 1
-PopcornState_Falling          = 2
-PopcornState_Conveyor         = 3
-ConveyorFrameSpeed            = 2
-ConveyorFirstTile             = $0B
-ConveyorLastTile              = $0E
-ConveyorBackgroundPpuAddress  = $2340
+ButtonA = %10000000
+ButtonB = %01000000
+ButtonSelect = %00100000
+ButtonStart = %00010000
+ButtonUp = %00001000
+ButtonDown = %00000100
+ButtonLeft = %00000010
+ButtonRight = %00000001
+PpuSpriteBuffer = $0200 ; Must be $XX00.  When high byte written to OAMDMA ($4014), $FF bytes will be copied from $XX00 to OAM.
+PpuDrawingBuffer = $0300
+BlankTile = $FF
+GameState_InitializeStart = 1
+GameState_Start = 2
+GameState_InitializePlay = 3
+GameState_Play = 4
+GameState_InitializeGameOver = 5
+GameState_GameOver = 6
+PopcornState_Background = 1
+PopcornState_Falling = 2
+PopcornState_Conveyor = 3
+ConveyorFrameSpeed = 2
+ConveyorFirstTile = $0B
+ConveyorLastTile = $0E
+ConveyorBackgroundPpuAddress = $2340
 
-
-  .rsset $0000
-NmiNeedDma                      .rs 1   ; $00
-NmiNeedDraw                     .rs 1   ; $01
-NmiNeedPpuRegistersUpdated      .rs 1   ; $02
-IsMainWaitingForNmiToFinish     .rs 1   ; $03
-Ppu2000Buffer                   .rs 1   ; $04
-Ppu2001Buffer                   .rs 1   ; $05
-PpuScrollXBuffer                .rs 1   ; $06
-PpuScrollYBuffer                .rs 1   ; $07
-PpuSpriteBufferIndex            .rs 1   ; $08
-BackgroundPointer               .rs 2   ; $09
-GameSpritePointer               .rs 2   ; $0B
-Player1PreviousButtons          .rs 1   ; $0D
-Player2PreviousButtons          .rs 1   ; $0E
-Player1Buttons                  .rs 1   ; $0F
-Player2Buttons                  .rs 1   ; $10
-NormalPaddleSpeed               .rs 1   ; $11 - Not to exceed $1F (31) or calculations for right wall limit fail. :)
-CurrentPaddleSpeed              .rs 1   ; $12
-PaddleCount                     .rs 1   ; $13
-RandomNumber                    .rs 1   ; $14
-TempPointer                     .rs 2   ; $15
-Temp                            .rs 1   ; $17
-Temp2                           .rs 1   ; $18
-GameState                       .rs 1   ; $19
-ConveyorTile                    .rs 1   ; $1A - Current Conveyor tile in conveyor animation
-ConveyorFrameCount              .rs 1   ; $1B - # of frames since last Conveyor advance
-ActivePopcornIndex              .rs 1   ; $1C - Index into ActivePopcornStates where falling popcorn start (0-14)
-ActivePopcornCount              .rs 1   ; $1D - # of popcorns from ActivePopcornIndex that are falling or on conveyor
-ActivePopcornRow                .rs 1   ; $1E - Active row popcorn is falling from (0-4).  Tile is Row*2 (0, 2, 4, 6 or 8)
-ActivePopcornAdvanceFrameSpeed  .rs 1   ; $1F - # frames before next popcorn starts falling
-ActivePopcornFrameCount         .rs 1   ; $20 - # frames - for starting next popcorn falling
-ActivePopcornPixelsPerFrame     .rs 8   ; $21 - # pixels falling popcorn falls per frame #
-ActivePopcornFallingFrame       .rs 1   ; $29 - Frame # for falling popcorn; cycles betwen 0 and 7
-ActivePopcornLevel              .rs 1   ; $2A - Level for next falling popcorn; determines falling speed.
-ActivePopcornColumns            .rs 15  ; $2B - Column # (0-14).  Filled with shuffled 0-14.  Indicates the order popcorn falls in row.
-ActivePopcornPositions          .rs 15  ; $3A - Y when State is Background or Falling, X when State is Conveyor
-ActivePopcornStates             .rs 15  ; $49 - Background, Falling, or Conveyor
-
-  .bank 0
-  .org $C000
+.segment "ZEROPAGE"  
+NmiNeedDma:                     .res 1   ; $00
+NmiNeedDraw:                    .res 1   ; $01
+NmiNeedPpuRegistersUpdated:     .res 1   ; $02
+IsMainWaitingForNmiToFinish:    .res 1   ; $03
+Ppu2000Buffer:                  .res 1   ; $04
+Ppu2001Buffer:                  .res 1   ; $05
+PpuScrollXBuffer:               .res 1   ; $06
+PpuScrollYBuffer:               .res 1   ; $07
+PpuSpriteBufferIndex:           .res 1   ; $08
+BackgroundPointer:              .res 2   ; $09
+GameSpritePointer:              .res 2   ; $0B
+Player1PreviousButtons:         .res 1   ; $0D
+Player2PreviousButtons:         .res 1   ; $0E
+Player1Buttons:                 .res 1   ; $0F
+Player2Buttons:                 .res 1   ; $10
+NormalPaddleSpeed:              .res 1   ; $11 - Not to exceed $1F (31) or calculations for right wall limit fail. :)
+CurrentPaddleSpeed:             .res 1   ; $12
+PaddleCount:                    .res 1   ; $13
+RandomNumber:                   .res 1   ; $14
+TempPointer:                    .res 2   ; $15
+Temp:                           .res 1   ; $17
+Temp2:                          .res 1   ; $18
+GameState:                      .res 1   ; $19
+ConveyorTile:                   .res 1   ; $1A - Current Conveyor tile in conveyor animation
+ConveyorFrameCount:             .res 1   ; $1B - # of frames since last Conveyor advance
+ActivePopcornIndex:             .res 1   ; $1C - Index into ActivePopcornStates where falling popcorn start (0-14)
+ActivePopcornCount:             .res 1   ; $1D - # of popcorns from ActivePopcornIndex that are falling or on conveyor
+ActivePopcornRow:               .res 1   ; $1E - Active row popcorn is falling from (0-4).  Tile is Row*2 (0, 2, 4, 6 or 8)
+ActivePopcornAdvanceFrameSpeed: .res 1   ; $1F - # frames before next popcorn starts falling
+ActivePopcornFrameCount:        .res 1   ; $20 - # frames - for starting next popcorn falling
+ActivePopcornPixelsPerFrame:    .res 8   ; $21 - # pixels falling popcorn falls per frame #
+ActivePopcornFallingFrame:      .res 1   ; $29 - Frame # for falling popcorn; cycles betwen 0 and 7
+ActivePopcornLevel:             .res 1   ; $2A - Level for next falling popcorn; determines falling speed.
+ActivePopcornColumns:           .res 15  ; $2B - Column # (0-14).  Filled with shuffled 0-14.  Indicates the order popcorn falls in row.
+ActivePopcornPositions:         .res 15  ; $3A - Y when State is Background or Falling, X when State is Conveyor
+ActivePopcornStates:            .res 15  ; $49 - Background, Falling, or Conveyor
 
 
+.segment "CODE"
 ResetInterruptHandler:
   LDX #$FF
   TXS
@@ -88,10 +85,10 @@ ResetInterruptHandler:
   JSR InitializeVariables
   LDA #%10000000      ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
   STA $2000           ; need NMI enabled now so buffers will get handled
-  STA <Ppu2000Buffer  ; need to also buffer so when buffers are handled, the value we just set isn't changed
+  STA Ppu2000Buffer   ; need to also buffer so when buffers are handled, the value we just set isn't changed
   LDA #$00            ; no scrolling so always set background display position to 0,0
-  STA <PpuScrollXBuffer
-  STA <PpuScrollYBuffer
+  STA PpuScrollXBuffer
+  STA PpuScrollYBuffer
   INC NmiNeedPpuRegistersUpdated
   JSR WaitForNextNmiToFinish
   JSR LoadPalettes
@@ -106,41 +103,41 @@ NmiInterruptHandler:
   TYA
   PHA
 
-  LDA <NmiNeedDma
+  LDA NmiNeedDma
   BEQ DoneNeedDma
   LDA #0                            ; do sprite DMA
   STA $2003                         ; conditional via the 'needdma' flag
-  LDA #HIGH(PpuSpriteBuffer)
+  LDA #>PpuSpriteBuffer
   STA $4014
-  DEC <NmiNeedDma
+  DEC NmiNeedDma
 DoneNeedDma:
 
-  LDA <NmiNeedDraw                  ; do other PPU drawing (NT/Palette/whathaveyou)
+  LDA NmiNeedDraw                   ; do other PPU drawing (NT/Palette/whathaveyou)
   BEQ DoneNeedDraw                  ; conditional via the 'needdraw' flag
   BIT $2002                         ; clear VBl flag, reset $2005/$2006 toggle
   JSR XferDrawingsToPpu             ; draw the stuff from the drawing buffer
-  DEC <NmiNeedDraw
+  DEC NmiNeedDraw
 DoneNeedDraw:
 
-  ;LDA <NmiNeedPpuRegistersUpdated
+  ;LDA NmiNeedPpuRegistersUpdated
   ;BEQ DoneNeedRegisters
-  LDA <Ppu2001Buffer                ; copy buffered $2000/$2001 (conditional via needppureg)
+  LDA Ppu2001Buffer                 ; copy buffered $2000/$2001 (conditional via needppureg)
   STA $2001
-  LDA <Ppu2000Buffer
+  LDA Ppu2000Buffer
   STA $2000
 
   BIT $2002
-  LDA <PpuScrollXBuffer             ; set X/Y scroll (conditional via needppureg)
+  LDA PpuScrollXBuffer              ; set X/Y scroll (conditional via needppureg)
   STA $2005
-  LDA <PpuScrollYBuffer
+  LDA PpuScrollYBuffer
   STA $2005
-  ;DEC <NmiNeedPpuRegistersUpdated
+  ;DEC NmiNeedPpuRegistersUpdated
 DoneNeedRegisters:
 
   JSR GenerateRandomNumber
 
   LDA #0                            ; clear the Main Waiting flag so that Main will continue
-  STA <IsMainWaitingForNmiToFinish  ; note that you should not 'dec' here, as it might
+  STA IsMainWaitingForNmiToFinish   ; note that you should not 'dec' here, as it might
                                     ; already be zero (will be the case during slowdown)
 
   PLA                               ; restore regs and exit
@@ -194,7 +191,7 @@ DoneXferDrawingsToPpu:
 
 
 Main:
-  LDA <GameState
+  LDA GameState
   CMP #GameState_InitializeStart
   BEQ HandleInitializeStart
   CMP #GameState_Start
@@ -267,39 +264,39 @@ WaitForVBlank:
 
 InitializeVariables:
   LDX #$08  ; Not to exceed $1F (31)
-  STX <NormalPaddleSpeed
+  STX NormalPaddleSpeed
   LDX #$05
-  STX <PaddleCount
+  STX PaddleCount
   LDX #40
-  STX <ActivePopcornAdvanceFrameSpeed
+  STX ActivePopcornAdvanceFrameSpeed
   LDA #12
   JSR SetPixelsPerFrameForLevel
   LDX #ConveyorFirstTile
-  STX <ConveyorTile
+  STX ConveyorTile
   LDX #$00
-  STX <Player1PreviousButtons
-  STX <Player2PreviousButtons
-  STX <ActivePopcornLevel
-  STX <ActivePopcornFallingFrame
-  STX <ActivePopcornFrameCount
-  STX <ConveyorFrameCount
-  STX <NmiNeedDma
-  STX <NmiNeedDraw
-  STX <NmiNeedPpuRegistersUpdated
-  STX <IsMainWaitingForNmiToFinish
-  STX <PpuScrollXBuffer
-  STX <PpuScrollYBuffer
-  STX <PpuSpriteBufferIndex
+  STX Player1PreviousButtons
+  STX Player2PreviousButtons
+  STX ActivePopcornLevel
+  STX ActivePopcornFallingFrame
+  STX ActivePopcornFrameCount
+  STX ConveyorFrameCount
+  STX NmiNeedDma
+  STX NmiNeedDraw
+  STX NmiNeedPpuRegistersUpdated
+  STX IsMainWaitingForNmiToFinish
+  STX PpuScrollXBuffer
+  STX PpuScrollYBuffer
+  STX PpuSpriteBufferIndex
   LDX #%10000000
-  STX <Ppu2000Buffer
+  STX Ppu2000Buffer
   LDX #%00011110
-  STX <Ppu2001Buffer
+  STX Ppu2001Buffer
   RTS
 
 
 InitializePopcorn:
   LDX #05
-  STX <ActivePopcornRow
+  STX ActivePopcornRow
   JSR AdvanceToNextPopcornRow
   RTS
 
@@ -325,7 +322,7 @@ ClearSpritesLoop:
   STA $0200, x
   INX
   BNE ClearSpritesLoop
-  INC <NmiNeedDma
+  INC NmiNeedDma
   RTS
 
 
@@ -347,7 +344,7 @@ LoadPalettesLoop:
 
 
 LoadInitialPaddleSprites:
-  LDX <PpuSpriteBufferIndex
+  LDX PpuSpriteBufferIndex
   LDY #0
 LoadInitialPaddleSpritesLoop:
   LDA PaddleSprites, X
@@ -356,14 +353,14 @@ LoadInitialPaddleSpritesLoop:
   INY
   CPY #80
   BNE LoadInitialPaddleSpritesLoop
-  STX <PpuSpriteBufferIndex
+  STX PpuSpriteBufferIndex
   LDX #$01
-  STX <NmiNeedDma
+  STX NmiNeedDma
   RTS
 
 
 LoadTestPopcornSprite:
-  LDX <PpuSpriteBufferIndex
+  LDX PpuSpriteBufferIndex
 
   ;vert tile attr horiz
   LDA PopcornSpriteStartY + 4
@@ -394,30 +391,30 @@ LoadTestPopcornSprite:
   STA PpuSpriteBuffer, X
   INX
 
-  STX <PpuSpriteBufferIndex
+  STX PpuSpriteBufferIndex
   LDX #$01
-  STX <NmiNeedDma
+  STX NmiNeedDma
   RTS
 
 
 AdvanceTestPopcorn:
-  LDX <ActivePopcornFallingFrame
+  LDX ActivePopcornFallingFrame
 
-  LDA <ActivePopcornPixelsPerFrame, X
+  LDA ActivePopcornPixelsPerFrame, X
   CLC
   ADC PpuSpriteBuffer + 80
   STA PpuSpriteBuffer + 80
 
-  LDA <ActivePopcornPixelsPerFrame, X
+  LDA ActivePopcornPixelsPerFrame, X
   CLC
   ADC PpuSpriteBuffer + 84
   STA PpuSpriteBuffer + 84
 
   LDX #$01
-  STX <NmiNeedDma           ; Trigger sprite buffer to be sent to PPU next NMI.
+  STX NmiNeedDma            ; Trigger sprite buffer to be sent to PPU next NMI.
 
-  INC <ActivePopcornFallingFrame
-  LDA <ActivePopcornFallingFrame
+  INC ActivePopcornFallingFrame
+  LDA ActivePopcornFallingFrame
   CMP #$08
   BNE AdvanceTestPopcornDone
   LDA #$00
@@ -428,48 +425,48 @@ AdvanceTestPopcornDone:
 
 SwitchToGameStateInitializeStartScreen:
   LDA #GameState_InitializeStart
-  STA <GameState
+  STA GameState
   RTS
 
 SwitchToGameStateStart:
   LDA #GameState_Start
-  STA <GameState
+  STA GameState
   RTS
 
 SwitchToGameStateIntializePlayScreen:
   LDA #GameState_InitializePlay
-  STA <GameState
+  STA GameState
   RTS
 
 SwitchToGameStatePlay:
   LDA #GameState_Play
-  STA <GameState
+  STA GameState
   RTS
 
 SwitchToGameStateInitializeGameOverScreen:
   LDA #GameState_InitializeGameOver
-  STA <GameState
+  STA GameState
   RTS
 
 SwitchToGameStateGameOver:
   LDA #GameState_GameOver
-  STA <GameState
+  STA GameState
   RTS
 
 
 LoadStartBackground:
-  LDA #LOW(StartBackground)
-  STA <BackgroundPointer
-  LDA #HIGH(StartBackground)
-  STA <BackgroundPointer + 1
+  LDA #<StartBackground
+  STA BackgroundPointer
+  LDA #>StartBackground
+  STA BackgroundPointer + 1
   JSR LoadBackground
   RTS
 
 LoadPlayBackground:
-  LDA #LOW(PlayBackground)
-  STA <BackgroundPointer
-  LDA #HIGH(PlayBackground)
-  STA <BackgroundPointer + 1
+  LDA #<PlayBackground
+  STA BackgroundPointer
+  LDA #>PlayBackground
+  STA BackgroundPointer + 1
   JSR LoadBackground
   RTS
 
@@ -484,13 +481,13 @@ LoadBackground:
   LDY #$00
 
 LoadBackgroundLoop:
-  LDA [BackgroundPointer], y  ; copy one background byte from address in pointer plus Y
+  LDA (BackgroundPointer), y    ; copy one background byte from address in pointer plus Y
   STA $2007                   ; this runs 256 * 4 times
   
   INY                         ; inside loop counter
   BNE LoadBackgroundLoop      ; run the inside loop 256 times before continuing down
   
-  INC <BackgroundPointer + 1   ; low byte went 0 to 256, so high byte needs to be changed now
+  INC BackgroundPointer + 1   ; low byte went 0 to 256, so high byte needs to be changed now
   
   DEX
   BNE LoadBackgroundLoop      ; Until X drops to #$00, we keep looping back for another 256 bytes.
@@ -502,10 +499,10 @@ ReadControllers:
   LDA #$00
   STA $4016 ; Stop $4016 and $4017 being written to so we can read them.
 
-  LDA <Player1Buttons
-  STA <Player1PreviousButtons
-  LDA <Player2Buttons
-  STA <Player2PreviousButtons
+  LDA Player1Buttons
+  STA Player1PreviousButtons
+  LDA Player2Buttons
+  STA Player2PreviousButtons
 
   ; Read $4016 (Player 1 controller) and $4017 (Player 2 controller) once for each button
   ; (A, B, Select, Start, Up, Down, Left, Right).  For each read bit 0 will have the state
@@ -516,42 +513,42 @@ ReadControllers:
 ReadControllersLoop:
   LDA $4016
   LSR A               ; bit 0 -> Carry
-  ROL <Player1Buttons ; bit 0 <- Carry
+  ROL Player1Buttons  ; bit 0 <- Carry
   LDA $4017
   LSR A               ; bit 0 -> Carry
-  ROL <Player2Buttons ; bit 0 <- Carry
+  ROL Player2Buttons  ; bit 0 <- Carry
   DEX
   BNE ReadControllersLoop
   RTS
 
 
 UpdatePaddles:
-  LDA <Player1Buttons
+  LDA Player1Buttons
   AND #ButtonLeft
   BNE MovePaddlesLeft
-  LDA <Player1Buttons
+  LDA Player1Buttons
   AND #ButtonRight
   BNE MovePaddlesRight
   RTS
 
 MovePaddlesLeft:
   JSR InitializeMovingPaddles
-  LDA [GameSpritePointer],Y
+  LDA (GameSpritePointer),Y
   SEC
-  SBC <NormalPaddleSpeed
+  SBC NormalPaddleSpeed
   BCS UseNormalLeftPaddleSpeed
 UseAdjustedLeftPaddleSpeed:
-  LDA [GameSpritePointer],Y
-  STA <CurrentPaddleSpeed
+  LDA (GameSpritePointer),Y
+  STA CurrentPaddleSpeed
   JMP MovePaddlesLeftLoop
 UseNormalLeftPaddleSpeed:
-  LDA <NormalPaddleSpeed
-  STA <CurrentPaddleSpeed
+  LDA NormalPaddleSpeed
+  STA CurrentPaddleSpeed
 MovePaddlesLeftLoop:
-  LDA [GameSpritePointer],Y
+  LDA (GameSpritePointer),Y
   SEC
-  SBC <CurrentPaddleSpeed
-  STA [GameSpritePointer],Y
+  SBC CurrentPaddleSpeed
+  STA (GameSpritePointer),Y
   JSR IncrementGameSpritePointerAndDecrementX
   BNE MovePaddlesLeftLoop
   INC NmiNeedDma
@@ -560,9 +557,9 @@ MovePaddlesLeftLoop:
 
 MovePaddlesRight:
   JSR InitializeMovingPaddles
-  LDA [GameSpritePointer],Y
+  LDA (GameSpritePointer),Y
   CLC
-  ADC <NormalPaddleSpeed
+  ADC NormalPaddleSpeed
   CMP #$E0
   BCC UseNormalRightPaddleSpeed
 UseAdjustedRightPaddleSpeed:
@@ -576,50 +573,50 @@ UseAdjustedRightPaddleSpeed:
   ; CurrentPaddleSpeed.
   SEC
   SBC #$E0
-  STA <CurrentPaddleSpeed
-  LDA <NormalPaddleSpeed
+  STA CurrentPaddleSpeed
+  LDA NormalPaddleSpeed
   SEC
-  SBC <CurrentPaddleSpeed
-  STA <CurrentPaddleSpeed
+  SBC CurrentPaddleSpeed
+  STA CurrentPaddleSpeed
   JMP MovePaddlesRightLoop
 UseNormalRightPaddleSpeed:
-  LDA <NormalPaddleSpeed
-  STA <CurrentPaddleSpeed
+  LDA NormalPaddleSpeed
+  STA CurrentPaddleSpeed
 MovePaddlesRightLoop:
-  LDA [GameSpritePointer],Y
+  LDA (GameSpritePointer),Y
   CLC
-  ADC <CurrentPaddleSpeed
-  STA [GameSpritePointer],Y
+  ADC CurrentPaddleSpeed
+  STA (GameSpritePointer),Y
   JSR IncrementGameSpritePointerAndDecrementX
   BNE MovePaddlesRightLoop
   INC NmiNeedDma
   RTS
 
 InitializeMovingPaddles:
-  LDA #HIGH(PpuSpriteBuffer)
-  STA <GameSpritePointer+1
-  LDA #LOW(PpuSpriteBuffer)
+  LDA #>PpuSpriteBuffer
+  STA GameSpritePointer+1
+  LDA #<PpuSpriteBuffer
   CLC
   ADC #$03
-  STA <GameSpritePointer
+  STA GameSpritePointer
   LDY #$00
   LDX #20
   RTS
   
 IncrementGameSpritePointerAndDecrementX:
-  LDA <GameSpritePointer
+  LDA GameSpritePointer
   CLC
   ADC #$04
-  STA <GameSpritePointer
-  LDA <GameSpritePointer+1
+  STA GameSpritePointer
+  LDA GameSpritePointer+1
   ADC #$00
-  STA <GameSpritePointer+1
+  STA GameSpritePointer+1
   DEX
   RTS
 
 
 SwitchToPlayStateWhenStartIsPressed:
-  LDA <Player1Buttons
+  LDA Player1Buttons
   AND #ButtonStart
   BNE SwitchToPlayState
   RTS
@@ -629,10 +626,10 @@ SwitchToPlayState:
 
 
 IncreaseLevelWhenBReleased:
-  LDA <Player1PreviousButtons
+  LDA Player1PreviousButtons
   AND #ButtonB
   BEQ IncreaseLevelWhenBReleasedDone
-  LDA <Player1Buttons
+  LDA Player1Buttons
   AND #ButtonB
   BNE IncreaseLevelWhenBReleasedDone
   JMP IncreaseLevel
@@ -641,22 +638,22 @@ IncreaseLevelWhenBReleasedDone:
 
 
 UpdateConveyor:
-  LDX <ConveyorFrameCount
+  LDX ConveyorFrameCount
   INX
   CPX #ConveyorFrameSpeed
   BCS AdvanceConveyor
-  STX <ConveyorFrameCount
+  STX ConveyorFrameCount
   RTS
 AdvanceConveyor:
   LDX #$00
-  STX <ConveyorFrameCount
-  LDX <ConveyorTile
+  STX ConveyorFrameCount
+  LDX ConveyorTile
   INX
   CPX #ConveyorLastTile + 1
   BNE UpdateConveyorContinue
   LDX #ConveyorFirstTile
 UpdateConveyorContinue:
-  STX <ConveyorTile
+  STX ConveyorTile
   JSR BufferConveyor
   RTS
 
@@ -670,10 +667,10 @@ BufferConveyor:
   LDA #$20
   STA PpuDrawingBuffer, X
   INX
-  LDA #HIGH(ConveyorBackgroundPpuAddress)
+  LDA #>ConveyorBackgroundPpuAddress
   STA PpuDrawingBuffer, X
   INX
-  LDA #LOW(ConveyorBackgroundPpuAddress)
+  LDA #<ConveyorBackgroundPpuAddress
   STA PpuDrawingBuffer, X
   INX
   INX
@@ -687,16 +684,16 @@ BufferConveyorLoop:
   LDA #$00
   STA PpuDrawingBuffer, X;  Flag end of buffers
   LDA #$01
-  STA <NmiNeedDraw
+  STA NmiNeedDraw
   RTS
 
 
 AdvanceToNextPopcornRow:
-  DEC <ActivePopcornRow
+  DEC ActivePopcornRow
   LDX #15
-  STX <ActivePopcornIndex
+  STX ActivePopcornIndex
   LDX #$00
-  STX <ActivePopcornCount
+  STX ActivePopcornCount
   JSR InitializeActivePopcornRow
   JMP ShuffleActivePopcornPosits
 
@@ -708,12 +705,12 @@ InitializeActivePopcornRow:
   LDX #00
 InitializeActivePopcornRowLoop:
   LDA #PopcornState_Background
-  STA <ActivePopcornStates, X
-  LDY <ActivePopcornRow
+  STA ActivePopcornStates, X
+  LDY ActivePopcornRow
   LDA PopcornSpriteStartY, Y
-  STA <ActivePopcornPositions, X
+  STA ActivePopcornPositions, X
   TXA
-  STA <ActivePopcornColumns, X
+  STA ActivePopcornColumns, X
   INX
   CPX #15
   BNE InitializeActivePopcornRowLoop
@@ -725,7 +722,7 @@ ShuffleActivePopcornPosits:
 ShuffleActivePopcornPositsLoop:
   PHA
   JSR GenerateRandomNumber
-  LDA <RandomNumber
+  LDA RandomNumber
 GetValidRandomNumber:
   CMP #15
   BCC GotValidRandomNumber
@@ -736,11 +733,11 @@ GotValidRandomNumber:
   TAY
   PLA
   TAX ; X and Y hold the indexes of the two Position elements to swap
-  LDA <ActivePopcornColumns, X
-  STA <Temp
+  LDA ActivePopcornColumns, X
+  STA Temp
   LDA ActivePopcornColumns, Y
-  STA <ActivePopcornColumns, X
-  LDA <Temp
+  STA ActivePopcornColumns, X
+  LDA Temp
   STA ActivePopcornColumns, Y
 
   TXA
@@ -752,22 +749,22 @@ GotValidRandomNumber:
 
 
 StartNextPopcornDropping:
-  DEC <ActivePopcornIndex
-  INC <ActivePopcornCount
-  LDX <ActivePopcornIndex
+  DEC ActivePopcornIndex
+  INC ActivePopcornCount
+  LDX ActivePopcornIndex
   LDA #PopcornState_Falling
-  STA <ActivePopcornStates, X
+  STA ActivePopcornStates, X
 
 ClearIndexPopcornFromBackground:
-  LDX <ActivePopcornIndex
-  LDA <ActivePopcornColumns, X
+  LDX ActivePopcornIndex
+  LDA ActivePopcornColumns, X
   ASL A
-  LDY <ActivePopcornRow
+  LDY ActivePopcornRow
   CLC
   ADC PopcornBackgroundRowOffsets, Y
-  STA <TempPointer+1
+  STA TempPointer+1
   LDA #$20
-  STA <TempPointer
+  STA TempPointer
 
 BufferPopcornBlanking:
   ;   Byte 0  = length                             
@@ -779,10 +776,10 @@ BufferPopcornBlanking:
   LDA #$02
   STA PpuDrawingBuffer, X
   INX
-  LDA <TempPointer
+  LDA TempPointer
   STA PpuDrawingBuffer, X
   INX
-  LDA <TempPointer+1
+  LDA TempPointer+1
   STA PpuDrawingBuffer, X
   INX
   INX
@@ -794,7 +791,7 @@ BufferPopcornBlanking:
   LDA #$00
   STA PpuDrawingBuffer, X;  Flag end of buffers
   LDA #$01
-  STA <NmiNeedDraw
+  STA NmiNeedDraw
   RTS
 
 
@@ -815,12 +812,12 @@ SetXToNextDrawingBufferDone:
 
 
 AdvancePopcornDropping:
-;  INC <ActivePopcornFrameCount
-;  LDA <ActivePopcornFrameCount
-;  CMP <ActivePopcornFrameSpeed
+;  INC ActivePopcornFrameCount
+;  LDA ActivePopcornFrameCount
+;  CMP ActivePopcornFrameSpeed
 ;  BCC AdvancePopcornDroppingDone
 ;  LDA #$00
-;  STA <ActivePopcornFrameCount
+;  STA ActivePopcornFrameCount
 ;  JMP StartNextPopcornDropping
 ;AdvancePopcornDroppingDone:
   ; Need to rethink whole popcorn-dropping design.  Popcorns from next row can start dropping
@@ -878,13 +875,13 @@ AdvancePopcornDropping:
 
 
 IncreaseLevel:
-  INC <ActivePopcornLevel
-  LDA <ActivePopcornLevel
+  INC ActivePopcornLevel
+  LDA ActivePopcornLevel
   AND #%111
   TAX
   LDA PixelsFrameIncrement, X
   TAX
-  INC <ActivePopcornPixelsPerFrame, x
+  INC ActivePopcornPixelsPerFrame, x
   RTS
 
 SetPixelsPerFrameForLevel:
@@ -901,22 +898,22 @@ DivideBy8Done:
   ; Y has value to initialize ActivePopcornPixelsPerFrame[0]-[7] with.
   LDX #$00
 SetInitialePixelsFrames:
-  STY <ActivePopcornPixelsPerFrame, X
+  STY ActivePopcornPixelsPerFrame, X
   INX
   CPX #$08
   BNE SetInitialePixelsFrames
   ; A has number of frames to advance from there (see IncreaseLevel for algorithm).
   LDX #$00
 AdvanceToCurrentFrame:
-  STA <Temp
-  CPX <Temp
+  STA Temp
+  CPX Temp
   BEQ AdvanceToCurrentFrameDone
   LDA PixelsFrameIncrement, X ; Indexed by frame (0-7) to get index for element in ActivePopcornPixelsPerFrame to increment
-  STX <Temp2
+  STX Temp2
   TAX
-  LDA <Temp
-  INC <ActivePopcornPixelsPerFrame, x
-  LDX <Temp2
+  LDA Temp
+  INC ActivePopcornPixelsPerFrame, x
+  LDX Temp2
   INX
   JMP AdvanceToCurrentFrame
 AdvanceToCurrentFrameDone:
@@ -925,7 +922,7 @@ AdvanceToCurrentFrameDone:
 
 GenerateRandomNumber:
   PHA
-  LDA <RandomNumber
+  LDA RandomNumber
   BEQ DoEor
   ASL A
   BEQ SetRandomNumber
@@ -933,7 +930,7 @@ GenerateRandomNumber:
 DoEor:
   EOR #$1d
 SetRandomNumber:
-  STA <RandomNumber
+  STA RandomNumber
   PLA
   RTS
 
@@ -949,9 +946,7 @@ WaitForNextNmiToFinishLoop:
   
   
   
-  .bank 1
-  .org $E000
-
+.segment "RODATA"
 StartBackground:
   .incbin "popcorn_start.nam";
 PlayBackground:
@@ -964,55 +959,53 @@ Palette:
 
 PaddleSprites:
      ;vert tile attr horiz
-  .db $67, $0A, $00, $70
-  .db $67, $0A, $00, $78
-  .db $67, $0A, $00, $80
-  .db $67, $0A, $00, $88
+  .byte $67, $0A, $00, $70
+  .byte $67, $0A, $00, $78
+  .byte $67, $0A, $00, $80
+  .byte $67, $0A, $00, $88
 
-  .db $7F, $0A, $00, $70
-  .db $7F, $0A, $00, $78
-  .db $7F, $0A, $00, $80
-  .db $7F, $0A, $00, $88
+  .byte $7F, $0A, $00, $70
+  .byte $7F, $0A, $00, $78
+  .byte $7F, $0A, $00, $80
+  .byte $7F, $0A, $00, $88
 
-  .db $97, $0A, $00, $70
-  .db $97, $0A, $00, $78
-  .db $97, $0A, $00, $80
-  .db $97, $0A, $00, $88
+  .byte $97, $0A, $00, $70
+  .byte $97, $0A, $00, $78
+  .byte $97, $0A, $00, $80
+  .byte $97, $0A, $00, $88
 
-  .db $AF, $0A, $00, $70
-  .db $AF, $0A, $00, $78
-  .db $AF, $0A, $00, $80
-  .db $AF, $0A, $00, $88
+  .byte $AF, $0A, $00, $70
+  .byte $AF, $0A, $00, $78
+  .byte $AF, $0A, $00, $80
+  .byte $AF, $0A, $00, $88
 
-  .db $C7, $0A, $00, $70
-  .db $C7, $0A, $00, $78
-  .db $C7, $0A, $00, $80
-  .db $C7, $0A, $00, $88
+  .byte $C7, $0A, $00, $70
+  .byte $C7, $0A, $00, $78
+  .byte $C7, $0A, $00, $80
+  .byte $C7, $0A, $00, $88
 
 PopcornBackgroundRowOffsets:  ; Indexed by Row (0-4)
-  .db $21, $41, $61, $81, $A1
+  .byte $21, $41, $61, $81, $A1
 
 PopcornSpriteStartX:  ; Indexed by column (0-14)
-  .db $08, $18, $28, $38, $48, $58, $68, $78, $88, $98, $A8, $B8, $C8, $D8, $E8
+  .byte $08, $18, $28, $38, $48, $58, $68, $78, $88, $98, $A8, $B8, $C8, $D8, $E8
 
 PopcornSpriteStartY:  ; Indexed by Row (0-4)
-  .db $07, $0F, $17, $1F, $27
+  .byte $07, $0F, $17, $1F, $27
 
-PixelsFrameIncrement  ; Lookup table for which PixelsFrame to increment for frame # mod 8 (0 - 7)
-  .db $00, $02, $04, $06, $01, $03, $05, $07
+PixelsFrameIncrement: ; Lookup table for which PixelsFrame to increment for frame # mod 8 (0 - 7)
+  .byte $00, $02, $04, $06, $01, $03, $05, $07
 
 
-  .org $FFFA
-  .dw NmiInterruptHandler   ; When VBlank begins
-  .dw ResetInterruptHandler ; When the processor first turns on or is reset
-  .dw 0                     ; External interrupt IRQ is not used
-  
+.segment "VECTORS"
+	.word	NmiInterruptHandler   ; When VBlank begins
+	.word	ResetInterruptHandler ; When the processor first turns on or is reset
+	.word	0                     ; External interrupt IRQ is not used
   
 ;;;;;;;;;;;;;;  
   
   
-  .bank 2
-  .org $0000
+.segment "CHARS"
   .incbin "popcorn.chr"   ;includes 8KB graphics file
 
 ; CMP - The Carry flag is set when the value stored in memory is less than or equal to the number stored in the accumulator.

@@ -1,4 +1,8 @@
 *.fns
 *.nes
 *.nes.deb
+*.lbl
+*.map
+*.nl
+*.o
 images/
