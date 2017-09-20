@@ -44,42 +44,42 @@ ConveyorBackgroundPpuAddress = $2340
 ;----------
 
 .segment "ZEROPAGE"  
-NmiNeedDma:                     .res 1   ; $00
-NmiNeedDraw:                    .res 1   ; $01
-NmiNeedPpuRegistersUpdated:     .res 1   ; $02
-IsMainWaitingForNmiToFinish:    .res 1   ; $03
-Ppu2000Buffer:                  .res 1   ; $04
-Ppu2001Buffer:                  .res 1   ; $05
-PpuScrollXBuffer:               .res 1   ; $06
-PpuScrollYBuffer:               .res 1   ; $07
-PpuSpriteBufferIndex:           .res 1   ; $08
-BackgroundPointer:              .res 2   ; $09
-GameSpritePointer:              .res 2   ; $0B
-Player1PreviousButtons:         .res 1   ; $0D
-Player2PreviousButtons:         .res 1   ; $0E
-Player1Buttons:                 .res 1   ; $0F
-Player2Buttons:                 .res 1   ; $10
-NormalPaddleSpeed:              .res 1   ; $11 - Not to exceed $1F (31) or calculations for right wall limit fail. :)
-CurrentPaddleSpeed:             .res 1   ; $12
-PaddleCount:                    .res 1   ; $13
-RandomNumber:                   .res 1   ; $14
-TempPointer:                    .res 2   ; $15
-Temp:                           .res 1   ; $17
-Temp2:                          .res 1   ; $18
-GameState:                      .res 1   ; $19
-ConveyorTile:                   .res 1   ; $1A - Current Conveyor tile in conveyor animation
-ConveyorFrameCount:             .res 1   ; $1B - # of frames since last Conveyor advance
-ActivePopcornIndex:             .res 1   ; $1C - Index into ActivePopcornStates where falling popcorn start (0-14)
-ActivePopcornCount:             .res 1   ; $1D - # of popcorns from ActivePopcornIndex that are falling or on conveyor
-ActivePopcornRow:               .res 1   ; $1E - Active row popcorn is falling from (0-4).  Tile is Row*2 (0, 2, 4, 6 or 8)
-ActivePopcornAdvanceFrameSpeed: .res 1   ; $1F - # frames before next popcorn starts falling
-ActivePopcornFrameCount:        .res 1   ; $20 - # frames - for starting next popcorn falling
-ActivePopcornPixelsPerFrame:    .res 8   ; $21 - # pixels falling popcorn falls per frame #
-ActivePopcornFallingFrame:      .res 1   ; $29 - Frame # for falling popcorn; cycles betwen 0 and 7
-ActivePopcornLevel:             .res 1   ; $2A - Level for next falling popcorn; determines falling speed.
-ActivePopcornColumns:           .res 15  ; $2B - Column # (0-14).  Filled with shuffled 0-14.  Indicates the order popcorn falls in row.
-ActivePopcornPositions:         .res 15  ; $3A - Y when State is Background or Falling, X when State is Conveyor
-ActivePopcornStates:            .res 15  ; $49 - Background, Falling, or Conveyor
+NmiNeedDma:                       .res 1   ; $00
+NmiNeedDraw:                      .res 1   ; $01
+NmiNeedPpuRegistersUpdated:       .res 1   ; $02
+IsMainWaitingForNmiToFinish:      .res 1   ; $03
+Ppu2000Buffer:                    .res 1   ; $04
+Ppu2001Buffer:                    .res 1   ; $05
+PpuScrollXBuffer:                 .res 1   ; $06
+PpuScrollYBuffer:                 .res 1   ; $07
+PpuSpriteBufferIndex:             .res 1   ; $08
+BackgroundPointer:                .res 2   ; $09
+GameSpritePointer:                .res 2   ; $0B
+Player1PreviousButtons:           .res 1   ; $0D
+Player2PreviousButtons:           .res 1   ; $0E
+Player1Buttons:                   .res 1   ; $0F
+Player2Buttons:                   .res 1   ; $10
+NormalPaddleSpeed:                .res 1   ; $11 - Not to exceed $1F (31) or calculations for right wall limit fail. :)
+CurrentPaddleSpeed:               .res 1   ; $12
+PaddleCount:                      .res 1   ; $13
+RandomNumber:                     .res 1   ; $14
+TempPointer:                      .res 2   ; $15
+Temp:                             .res 1   ; $17
+Temp2:                            .res 1   ; $18
+GameState:                        .res 1   ; $19
+ConveyorTile:                     .res 1   ; $1A - Current Conveyor tile in conveyor animation
+ConveyorFrameCount:               .res 1   ; $1B - # of frames since last Conveyor advance
+ActivePopcornIndex:               .res 1   ; $1C - Index into ActivePopcornStates where falling popcorn start (0-14)
+ActivePopcornCount:               .res 1   ; $1D - # of popcorns from ActivePopcornIndex that are falling or on conveyor
+ActivePopcornRow:                 .res 1   ; $1E - Active row popcorn is falling from (0-4).  Tile is Row*2 (0, 2, 4, 6 or 8)
+ActivePopcornAdvanceFrameSpeed:   .res 1   ; $1F - # frames before next popcorn starts falling
+ActivePopcornFrameCount:          .res 1   ; $20 - # frames - for starting next popcorn falling
+ActivePopcornPixelsPerFrame:      .res 8   ; $21 - # pixels falling popcorn falls per frame #
+ActivePopcornFallingFrame:        .res 1   ; $29 - Frame # for falling popcorn; cycles betwen 0 and 7
+ActivePopcornLevel:               .res 1   ; $2A - Level for next falling popcorn; determines falling speed.
+ActivePopcornColumns:             .res 15  ; $2B - Column # (0-14).  Filled with shuffled 0-14.  Indicates the order popcorn falls in row.
+ActivePopcornPositions:           .res 15  ; $3A - Y when State is Background or Falling, X when State is Conveyor
+ActivePopcornStates:              .res 15  ; $49 - Background, Falling, or Conveyor
 
 ;----------
 
@@ -118,7 +118,6 @@ NmiInterruptHandler:
   PHA
   TYA
   PHA
-
   LDA NmiNeedDma
   BEQ DoneNeedDma
   LDA #0                            ; do sprite DMA
@@ -127,21 +126,18 @@ NmiInterruptHandler:
   STA $4014
   DEC NmiNeedDma
 DoneNeedDma:
-
   LDA NmiNeedDraw                   ; do other PPU drawing (NT/Palette/whathaveyou)
   BEQ DoneNeedDraw                  ; conditional via the 'needdraw' flag
   BIT $2002                         ; clear VBl flag, reset $2005/$2006 toggle
   JSR XferDrawingsToPpu             ; draw the stuff from the drawing buffer
   DEC NmiNeedDraw
 DoneNeedDraw:
-
   ;LDA NmiNeedPpuRegistersUpdated
   ;BEQ DoneNeedRegisters
   LDA Ppu2001Buffer                 ; copy buffered $2000/$2001 (conditional via needppureg)
   STA $2001
   LDA Ppu2000Buffer
   STA $2000
-
   BIT $2002
   LDA PpuScrollXBuffer              ; set X/Y scroll (conditional via needppureg)
   STA $2005
@@ -149,13 +145,9 @@ DoneNeedDraw:
   STA $2005
   ;DEC NmiNeedPpuRegistersUpdated
 DoneNeedRegisters:
-
   JSR GenerateRandomNumber
-
   LDA #0                            ; clear the Main Waiting flag so that Main will continue
-  STA IsMainWaitingForNmiToFinish   ; note that you should not 'dec' here, as it might
-                                    ; already be zero (will be the case during slowdown)
-
+  STA IsMainWaitingForNmiToFinish   ; do not DEC here, as it might already be zero (will be the case during slowdown)
   PLA                               ; restore regs and exit
   TAY
   PLA
@@ -165,42 +157,34 @@ DoneNeedRegisters:
 
 ;----------
 
+XferDrawingsToPpu:
 ; Input data has the following format:           
 ;   Byte 0  = length                             
 ;   Byte 1  = high byte of the PPU address       
 ;   Byte 2  = low byte of the PPU address        
 ;   Byte 3  = reserved for now
 ;   Byte 4+ = {length} bytes                     
-;                                                
 ; Repeat until length == 0 is found.             
-XferDrawingsToPpu:
   LDX #$00
   LDA $2002                 ; read PPU status to reset the high/low latch
-
 XferDrawingsToPpuLoop:
   LDY PpuDrawingBuffer, X   ; load the length of the data to the Y register
   BEQ DoneXferDrawingsToPpu ; length equal 0 means that the drawing is done  
-  
   INX                       ; X = 1
   LDA PpuDrawingBuffer, X   ; load the high byte of the target address
   STA $2006                 ; write the high byte to PPU
-  
   INX                       ; X = 2
   LDA PpuDrawingBuffer, X   ; load the low byte of the target address
   STA $2006                 ; write the low byte to PPU
-  
   INX                       ; X = 3 (reserved for now)
-      
 XferDrawingToPpuLoop:
   INX                       ; increment X so it points to the next byte
   LDA PpuDrawingBuffer, X   ; load a byte of the data
   STA $2007                 ; write it to PPU
   DEY                       ; decrement Y
   BNE XferDrawingToPpuLoop  ; if Y != 0 jump to .setLoop
-    
   INX                       ; increment X so it points to the next segment      
   JMP XferDrawingsToPpuLoop ; jump back to .drawLoop
- 
 DoneXferDrawingsToPpu:
   LDA #$00
   STA PpuDrawingBuffer ; Reset buffer
@@ -316,6 +300,7 @@ InitializeVariables:
   STX Ppu2001Buffer
   RTS
 
+;----------
 
 SetPixelsPerFrameForLevel:
   ; A = level
@@ -427,7 +412,6 @@ LoadInitialPaddleSpritesLoop:
 
 LoadTestPopcornSprite:
   LDX PpuSpriteBufferIndex
-
   ;vert tile attr horiz
   LDA PopcornSpriteStartY + 4
   STA PpuSpriteBuffer, X
@@ -441,7 +425,6 @@ LoadTestPopcornSprite:
   LDA PopcornSpriteStartX + 3
   STA PpuSpriteBuffer, X
   INX
-
   LDA PopcornSpriteStartY + 4
   STA PpuSpriteBuffer, X
   INX
@@ -456,7 +439,6 @@ LoadTestPopcornSprite:
   ADC #$08
   STA PpuSpriteBuffer, X
   INX
-
   STX PpuSpriteBufferIndex
   LDX #$01
   STX NmiNeedDma
@@ -466,27 +448,22 @@ LoadTestPopcornSprite:
 
 AdvanceTestPopcorn:
   LDX ActivePopcornFallingFrame
-
   LDA ActivePopcornPixelsPerFrame, X
   CLC
   ADC PpuSpriteBuffer + 80
   STA PpuSpriteBuffer + 80
-
   LDA ActivePopcornPixelsPerFrame, X
   CLC
   ADC PpuSpriteBuffer + 84
   STA PpuSpriteBuffer + 84
-
   LDX #$01
   STX NmiNeedDma            ; Trigger sprite buffer to be sent to PPU next NMI.
-
   INC ActivePopcornFallingFrame
   LDA ActivePopcornFallingFrame
   CMP #$08
   BNE AdvanceTestPopcornDone
   LDA #$00
   STA ActivePopcornFallingFrame
-
 AdvanceTestPopcornDone:
   RTS
 
@@ -497,30 +474,42 @@ SwitchToGameStateInitializeStartScreen:
   STA GameState
   RTS
 
+;----------
+
 SwitchToGameStateStart:
   LDA #GameState_Start
   STA GameState
   RTS
+
+;----------
 
 SwitchToGameStateIntializePlayScreen:
   LDA #GameState_InitializePlay
   STA GameState
   RTS
 
+;----------
+
 SwitchToGameStatePlay:
   LDA #GameState_Play
   STA GameState
   RTS
+
+;----------
 
 SwitchToGameStateInitializeGameOverScreen:
   LDA #GameState_InitializeGameOver
   STA GameState
   RTS
 
+;----------
+
 SwitchToGameStateGameOver:
   LDA #GameState_GameOver
   STA GameState
   RTS
+
+;----------
 
 SwitchToPlayStateWhenStartIsPressed:
   LDA Player1Buttons
@@ -538,6 +527,8 @@ LoadStartBackground:
   JSR LoadBackground
   RTS
 
+;----------
+
 LoadPlayBackground:
   LDA #<PlayBackground
   STA BackgroundPointer
@@ -546,25 +537,22 @@ LoadPlayBackground:
   JSR LoadBackground
   RTS
 
+;----------
+
 LoadBackground:
   LDA $2002             ; read PPU status to reset the high/low latch
   LDA #$20
   STA $2006             ; write the high byte of PPU address
   LDA #$00
   STA $2006             ; write the low byte of PPU address
-
   LDX #$04
   LDY #$00
-
 LoadBackgroundLoop:
   LDA (BackgroundPointer), y    ; copy one background byte from address in pointer plus Y
   STA $2007                   ; this runs 256 * 4 times
-  
   INY                         ; inside loop counter
   BNE LoadBackgroundLoop      ; run the inside loop 256 times before continuing down
-  
   INC BackgroundPointer + 1   ; low byte went 0 to 256, so high byte needs to be changed now
-  
   DEX
   BNE LoadBackgroundLoop      ; Until X drops to #$00, we keep looping back for another 256 bytes.
   RTS
@@ -610,6 +598,8 @@ UpdatePaddles:
   BNE MovePaddlesRight
   RTS
 
+;----------
+
 MovePaddlesLeft:
   JSR InitializeMovingPaddles
   LDA (GameSpritePointer),Y
@@ -633,6 +623,7 @@ MovePaddlesLeftLoop:
   INC NmiNeedDma
   RTS
 
+;----------
 
 MovePaddlesRight:
   JSR InitializeMovingPaddles
@@ -671,6 +662,8 @@ MovePaddlesRightLoop:
   INC NmiNeedDma
   RTS
 
+;----------
+
 InitializeMovingPaddles:
   LDA #>PpuSpriteBuffer
   STA GameSpritePointer+1
@@ -681,6 +674,8 @@ InitializeMovingPaddles:
   LDY #$00
   LDX #20
   RTS
+
+;----------
 
 IncrementGameSpritePointerAndDecrementX:
   LDA GameSpritePointer
@@ -704,6 +699,8 @@ IncreaseLevel:
   TAX
   INC ActivePopcornPixelsPerFrame, x
   RTS
+
+;----------
 
 IncreaseLevelWhenBReleased:
   LDA Player1PreviousButtons
@@ -737,6 +734,8 @@ UpdateConveyorContinue:
   STX ConveyorTile
   JSR BufferConveyor
   RTS
+
+;----------
 
 BufferConveyor:
   ;   Byte 0  = length                             
