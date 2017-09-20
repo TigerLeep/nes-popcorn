@@ -227,10 +227,10 @@ HandleInitializePlay:
   JSR LoadPlayBackground
   JSR LoadInitialPaddleSprites
   JSR LoadTestPopcornSprite
-  JSR SwitchToGameStatePlay
   JSR InitializePopcorn
   JSR WaitForNextNmiToFinish
   JSR EnableRendering
+  JSR SwitchToGameStatePlay
   JMP Main
 HandlePlay:
   JSR UpdateConveyor
@@ -832,6 +832,7 @@ SwapShuffledPopcornIndexesXAndY:
   STA ShuffledPopcornIndexes, X
   PLA
   STA ShuffledPopcornIndexes, Y
+  RTS
 
 ;----------
 
