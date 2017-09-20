@@ -33,9 +33,6 @@ GameState_InitializePlay = 3
 GameState_Play = 4
 GameState_InitializeGameOver = 5
 GameState_GameOver = 6
-PopcornState_Background = 1
-PopcornState_Falling = 2
-PopcornState_Conveyor = 3
 ConveyorFrameSpeed = 2
 ConveyorFirstTile = $0B
 ConveyorLastTile = $0E
@@ -69,17 +66,21 @@ Temp2:                            .res 1   ; $18
 GameState:                        .res 1   ; $19
 ConveyorTile:                     .res 1   ; $1A - Current Conveyor tile in conveyor animation
 ConveyorFrameCount:               .res 1   ; $1B - # of frames since last Conveyor advance
-ActivePopcornIndex:               .res 1   ; $1C - Index into ActivePopcornStates where falling popcorn start (0-14)
-ActivePopcornCount:               .res 1   ; $1D - # of popcorns from ActivePopcornIndex that are falling or on conveyor
-ActivePopcornRow:                 .res 1   ; $1E - Active row popcorn is falling from (0-4).  Tile is Row*2 (0, 2, 4, 6 or 8)
-ActivePopcornAdvanceFrameSpeed:   .res 1   ; $1F - # frames before next popcorn starts falling
-ActivePopcornFrameCount:          .res 1   ; $20 - # frames - for starting next popcorn falling
-ActivePopcornPixelsPerFrame:      .res 8   ; $21 - # pixels falling popcorn falls per frame #
-ActivePopcornFallingFrame:        .res 1   ; $29 - Frame # for falling popcorn; cycles betwen 0 and 7
-ActivePopcornLevel:               .res 1   ; $2A - Level for next falling popcorn; determines falling speed.
-ActivePopcornColumns:             .res 15  ; $2B - Column # (0-14).  Filled with shuffled 0-14.  Indicates the order popcorn falls in row.
-ActivePopcornPositions:           .res 15  ; $3A - Y when State is Background or Falling, X when State is Conveyor
-ActivePopcornStates:              .res 15  ; $49 - Background, Falling, or Conveyor
+
+
+ShuffledPopcornRowIndex:          .res 1   ; $1E - Index of popcorn row currently queued for falling (0-4).  Tile is Row*2 (0, 2, 4, 6 or 8)
+ShuffledPopcornIndexes:           .res 15  ; $1C - Column index (0-14).  Filled with shuffled 0-14.  Indicates the order popcorn falls in row.
+ShuffledPopcornNextQueuedIndex:   .res 1   ; $2B - Index into ShuffledPopcornIndexes for next popcorn to fall (0-14)
+SpritedPopcornX:                  .res 15  ; $2C - X of popcorn when falling or on conveyor
+SpritedPopcornY:                  .res 15  ; $3B - Y of popcorn when falling or on conveyor
+SpritedPopcornTile:               .res 15  ; $4A - Index of first tile of popcorn when falling or on conveyor
+SpritedPopcornNextAvailableIndex: .res 1   ; $59 - Index into SpritedPopcornX/Y of next available spot to store a sprited popcorn
+
+ActivePopcornAdvanceFrameSpeed:   .res 1   ; $5A - # frames before next popcorn starts falling
+ActivePopcornFrameCount:          .res 1   ; $5B - # frames - for starting next popcorn falling
+ActivePopcornPixelsPerFrame:      .res 8   ; $5C - # pixels falling popcorn falls per frame #
+ActivePopcornFallingFrame:        .res 1   ; $64 - Frame # for falling popcorn; cycles betwen 0 and 7
+ActivePopcornLevel:               .res 1   ; $65 - Level for next falling popcorn; determines falling speed.
 
 ;----------
 
@@ -340,9 +341,9 @@ AdvanceToCurrentFrameDone:
 ;----------
 
 InitializePopcorn:
-  LDX #05
-  STX ActivePopcornRow
-  JSR AdvanceToNextPopcornRow
+  LDX #04
+  STX ShuffledPopcornRowIndex
+  JSR InitializeCurrentShuffledPopcornRow
   RTS
 
 ;----------
@@ -769,84 +770,141 @@ BufferConveyorLoop:
 
 ;----------
 
-AdvanceToNextPopcornRow:
-  DEC ActivePopcornRow
-  LDX #15
-  STX ActivePopcornIndex
-  LDX #$00
-  STX ActivePopcornCount
-  JSR InitializeActivePopcornRow
-  JMP ShuffleActivePopcornPosits
-
-
-InitializeActivePopcornRow:
-  ; States
-  ; Positions
-  ; Columns
-  LDX #00
-InitializeActivePopcornRowLoop:
-  LDA #PopcornState_Background
-  STA ActivePopcornStates, X
-  LDY ActivePopcornRow
-  LDA PopcornSpriteStartY, Y
-  STA ActivePopcornPositions, X
-  TXA
-  STA ActivePopcornColumns, X
-  INX
-  CPX #15
-  BNE InitializeActivePopcornRowLoop
-  RTS
-
-
-ShuffleActivePopcornPosits:
-  LDA #00
-ShuffleActivePopcornPositsLoop:
-  PHA
-  JSR GenerateRandomNumber
-  LDA RandomNumber
-GetValidRandomNumber:
-  CMP #15
-  BLT GotValidRandomNumber
-  SEC
-  SBC #14
-  JMP GetValidRandomNumber
-GotValidRandomNumber:
-  TAY
-  PLA
-  TAX ; X and Y hold the indexes of the two Position elements to swap
-  LDA ActivePopcornColumns, X
-  STA Temp
-  LDA ActivePopcornColumns, Y
-  STA ActivePopcornColumns, X
-  LDA Temp
-  STA ActivePopcornColumns, Y
-
-  TXA
-  CLC
-  ADC #01
-  CMP #15
-  BNE ShuffleActivePopcornPositsLoop
+InitializeCurrentShuffledPopcornRow:
+  JSR ResetCurrentShuffledPopcornRow
+  JMP RandomizeShuffledPopcorn
+  LDX #14
+  STX ShuffledPopcornNextQueuedIndex
   RTS
 
 ;----------
 
-StartNextPopcornDropping:
-  DEC ActivePopcornIndex
-  INC ActivePopcornCount
-  LDX ActivePopcornIndex
-  LDA #PopcornState_Falling
-  STA ActivePopcornStates, X
+ResetCurrentShuffledPopcornRow:
+  LDX #00
+ResetCurrentShuffledPopcornRowLoop:
+  TXA
+  STA ShuffledPopcornIndexes, X
+  INX
+  CPX #15
+  BNE ResetCurrentShuffledPopcornRowLoop
+  RTS
 
-ClearIndexPopcornFromBackground:
-  LDX ActivePopcornIndex
-  LDA ActivePopcornColumns, X
+;----------
+
+RandomizeShuffledPopcorn:
+  LDX #00
+RandomizeShuffledPopcornLoop:
+  JSR LoadYWithRandom0To14
+  JSR SwapShuffledPopcornIndexesXAndY
+  INX
+  CPX #15
+  BNE RandomizeShuffledPopcornLoop
+  RTS
+
+;----------
+
+LoadYWithRandom0To14:
+  PHA
+  JSR GenerateRandomNumber
+  LDA RandomNumber
+  JSR LoadAWithAModulus15
+  TAY
+  PLA
+  RTS
+
+;----------
+
+LoadAWithAModulus15:
+  CMP #15
+  BLT GotAModulus15
+  SEC
+  SBC #14
+  JMP LoadAWithAModulus15
+GotAModulus15:
+  RTS
+
+;----------
+
+SwapShuffledPopcornIndexesXAndY:
+  LDA ShuffledPopcornIndexes, X
+  PHA
+  LDA ShuffledPopcornIndexes, Y
+  STA ShuffledPopcornIndexes, X
+  PLA
+  STA ShuffledPopcornIndexes, Y
+
+;----------
+
+StartNextActivePopcornDropping:
+  ; Remove the next popcorn from the Shuffled list and add it to the Sprited list.
+  JSR LoadYWithIndexOfNextQueuedShuffledPopcorn
+  LDX SpritedPopcornNextAvailableIndex
+  JSR AdjustShuffledAndSpritedIndexes
+  JSR LoadPopcornAtIndexYIntoSpritedListAtIndexX
+  JMP ClearPopcornAtIndexYFromBackground
+
+;----------
+
+LoadPopcornAtIndexYIntoSpritedListAtIndexX:
+  LDA PopcornSpriteStartX, Y
+  STA SpritedPopcornX, X
+  LDA PopcornSpriteStartY, Y
+  STA SpritedPopcornY, X
+  JSR LoadAWithCurrentRowsPopcornTile
+  STA SpritedPopcornTile, X
+  RTS
+
+;----------
+
+LoadYWithIndexOfNextQueuedShuffledPopcorn:
+  LDY ShuffledPopcornNextQueuedIndex
+  LDA ShuffledPopcornIndexes, Y
+  TAY
+  RTS
+
+;----------
+
+LoadYAndXWithShuffledAndSpritedIndexes:
+  LDY ShuffledPopcornNextQueuedIndex
+  LDA ShuffledPopcornIndexes, Y
+  TAY
+  LDX SpritedPopcornNextAvailableIndex
+  RTS
+
+;----------
+
+AdjustShuffledAndSpritedIndexes:
+  DEC ShuffledPopcornNextQueuedIndex
+  INC SpritedPopcornNextAvailableIndex
+  RTS
+
+LoadAWithCurrentRowsPopcornTile:
+  LDA ShuffledPopcornRowIndex
+  ASL A                         ; Popcorn row index (0-4) * 2 == popcorn's tile index
+  RTS
+
+;----------
+
+ClearPopcornAtIndexYFromBackground:
+  TXA
+  PHA
+  TYA
+  PHA
   ASL A
-  LDY ActivePopcornRow
+  LDY ShuffledPopcornRowIndex
   CLC
   ADC PopcornBackgroundRowOffsets, Y
   STA TempPointer+1
   LDA #$20
   STA TempPointer
+  JSR BufferPopcornBlanking
+  PLA
+  TAY
+  PLA
+  TAX
+  RTS
+
+;----------
 
 BufferPopcornBlanking:
   ;   Byte 0  = length                             
