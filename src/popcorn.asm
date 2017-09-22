@@ -41,46 +41,49 @@ ConveyorBackgroundPpuAddress = $2340
 ;----------
 
 .segment "ZEROPAGE"  
-NmiNeedDma:                       .res 1   ; $00
-NmiNeedDraw:                      .res 1   ; $01
-NmiNeedPpuRegistersUpdated:       .res 1   ; $02
-IsMainWaitingForNmiToFinish:      .res 1   ; $03
-Ppu2000Buffer:                    .res 1   ; $04
-Ppu2001Buffer:                    .res 1   ; $05
-PpuScrollXBuffer:                 .res 1   ; $06
-PpuScrollYBuffer:                 .res 1   ; $07
-PpuSpriteBufferIndex:             .res 1   ; $08
-BackgroundPointer:                .res 2   ; $09
-GameSpritePointer:                .res 2   ; $0B
-Player1PreviousButtons:           .res 1   ; $0D
-Player2PreviousButtons:           .res 1   ; $0E
-Player1Buttons:                   .res 1   ; $0F
-Player2Buttons:                   .res 1   ; $10
-NormalPaddleSpeed:                .res 1   ; $11 - Not to exceed $1F (31) or calculations for right wall limit fail. :)
-CurrentPaddleSpeed:               .res 1   ; $12
-PaddleCount:                      .res 1   ; $13
-RandomNumber:                     .res 1   ; $14
-TempPointer:                      .res 2   ; $15
-Temp:                             .res 1   ; $17
-Temp2:                            .res 1   ; $18
-GameState:                        .res 1   ; $19
-ConveyorTile:                     .res 1   ; $1A - Current Conveyor tile in conveyor animation
-ConveyorFrameCount:               .res 1   ; $1B - # of frames since last Conveyor advance
+NmiNeedDma:                       .res 1   ;
+NmiNeedDraw:                      .res 1   ;
+NmiNeedPpuRegistersUpdated:       .res 1   ;
+IsMainWaitingForNmiToFinish:      .res 1   ;
+Ppu2000Buffer:                    .res 1   ;
+Ppu2001Buffer:                    .res 1   ;
+PpuScrollXBuffer:                 .res 1   ;
+PpuScrollYBuffer:                 .res 1   ;
+PpuSpriteBufferIndex:             .res 1   ;
+BackgroundPointer:                .res 2   ;
+GameSpritePointer:                .res 2   ;
+Player1PreviousButtons:           .res 1   ;
+Player2PreviousButtons:           .res 1   ;
+Player1Buttons:                   .res 1   ;
+Player2Buttons:                   .res 1   ;
+NormalPaddleSpeed:                .res 1   ; Not to exceed $1F (31) or calculations for right wall limit fail. :)
+CurrentPaddleSpeed:               .res 1   ;
+PaddleCount:                      .res 1   ;
+RandomNumber:                     .res 1   ;
+TempPointer:                      .res 2   ;
+Temp:                             .res 1   ;
+Temp2:                            .res 1   ;
+;Temp3:                            .res 1   ;
+;Temp4:                            .res 1   ;
+GameState:                        .res 1   ;
+ConveyorTile:                     .res 1   ; Current Conveyor tile in conveyor animation
+ConveyorFrameCount:               .res 1   ; # of frames since last Conveyor advance
 
+ShuffledPopcornRowIndex:          .res 1   ; Index of popcorn row currently queued for falling (0-4).  Tile is Row*2 (0, 2, 4, 6 or 8)
+ShuffledPopcornIndexes:           .res 15  ; Column index (0-14).  Filled with shuffled 0-14.  Indicates the order popcorn falls in row.
+ShuffledPopcornNextQueuedIndex:   .res 1   ; Index into ShuffledPopcornIndexes for next popcorn to fall (0-14)
+SpritedPopcornX:                  .res 15  ; X of sprited popcorn
+SpritedPopcornY:                  .res 15  ; Y of sprited popcorn
+SpritedPopcornTile:               .res 15  ; Index of first tile of sprited popcorn
+SpritedPopcornSpeed:              .res 15  ; Speed (0-255) of sprited popcorn
+SpritedPopcornNextAvailableIndex: .res 1   ; Index into sprited popcorn lists of next available spot to store a sprited popcorn
 
-ShuffledPopcornRowIndex:          .res 1   ; $1E - Index of popcorn row currently queued for falling (0-4).  Tile is Row*2 (0, 2, 4, 6 or 8)
-ShuffledPopcornIndexes:           .res 15  ; $1C - Column index (0-14).  Filled with shuffled 0-14.  Indicates the order popcorn falls in row.
-ShuffledPopcornNextQueuedIndex:   .res 1   ; $2B - Index into ShuffledPopcornIndexes for next popcorn to fall (0-14)
-SpritedPopcornX:                  .res 15  ; $2C - X of popcorn when falling or on conveyor
-SpritedPopcornY:                  .res 15  ; $3B - Y of popcorn when falling or on conveyor
-SpritedPopcornTile:               .res 15  ; $4A - Index of first tile of popcorn when falling or on conveyor
-SpritedPopcornNextAvailableIndex: .res 1   ; $59 - Index into SpritedPopcornX/Y of next available spot to store a sprited popcorn
+SpeedOfPopcornOnLowestRow:        .res 1   ; The speed (0-255) of popcorn on lowest row of current level
+CurrentFrameModulus8:             .res 1   ; Current frame # (0-7).
 
-ActivePopcornAdvanceFrameSpeed:   .res 1   ; $5A - # frames before next popcorn starts falling
-ActivePopcornFrameCount:          .res 1   ; $5B - # frames - for starting next popcorn falling
-ActivePopcornPixelsPerFrame:      .res 8   ; $5C - # pixels falling popcorn falls per frame #
-ActivePopcornFallingFrame:        .res 1   ; $64 - Frame # for falling popcorn; cycles betwen 0 and 7
-ActivePopcornLevel:               .res 1   ; $65 - Level for next falling popcorn; determines falling speed.
+PixelsToDropPopcornAtFrame:       .res 8   ; # pixels popcorn falls at frame #
+
+;TempTestTable:                    .res 8*17;
 
 ;----------
 
@@ -99,6 +102,7 @@ ResetInterruptHandler:
   JSR ClearMemory
   JSR WaitForVBlank
   JSR InitializeVariables
+  ;JSR LoadTempTestTable
   LDA #%10000000      ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
   STA $2000           ; need NMI enabled now so buffers will get handled
   STA Ppu2000Buffer   ; need to also buffer so when buffers are handled, the value we just set isn't changed
@@ -147,6 +151,7 @@ DoneNeedDraw:
   ;DEC NmiNeedPpuRegistersUpdated
 DoneNeedRegisters:
   JSR GenerateRandomNumber
+  JSR IncrementCurrentFrameModulus8
   LDA #0                            ; clear the Main Waiting flag so that Main will continue
   STA IsMainWaitingForNmiToFinish   ; do not DEC here, as it might already be zero (will be the case during slowdown)
   PLA                               ; restore regs and exit
@@ -155,6 +160,18 @@ DoneNeedRegisters:
   TAX
   PLA
   RTI
+
+;----------
+
+IncrementCurrentFrameModulus8:
+  INC CurrentFrameModulus8
+  LDA CurrentFrameModulus8
+  CMP #08
+  BLT IncrementCurrentFrameModulus8Done
+  LDA #00
+  STA CurrentFrameModulus8
+IncrementCurrentFrameModulus8Done:
+  RTS
 
 ;----------
 
@@ -236,8 +253,6 @@ HandlePlay:
   JSR UpdateConveyor
   JSR UpdatePaddles
   JSR ReadControllers
-  JSR IncreaseLevelWhenBReleased
-  JSR AdvanceTestPopcorn
   JSR WaitForNextNmiToFinish
   JMP Main
 HandleInitializeGameOver:
@@ -275,18 +290,13 @@ InitializeVariables:
   STX NormalPaddleSpeed
   LDX #$05
   STX PaddleCount
-  LDX #40
-  STX ActivePopcornAdvanceFrameSpeed
-  LDA #12
-  JSR SetPixelsPerFrameForLevel
   LDX #ConveyorFirstTile
   STX ConveyorTile
   LDX #$00
   STX Player1PreviousButtons
   STX Player2PreviousButtons
-  STX ActivePopcornLevel
-  STX ActivePopcornFallingFrame
-  STX ActivePopcornFrameCount
+  STX SpeedOfPopcornOnLowestRow
+  STX CurrentFrameModulus8
   STX ConveyorFrameCount
   STX NmiNeedDma
   STX NmiNeedDraw
@@ -299,43 +309,6 @@ InitializeVariables:
   STX Ppu2000Buffer
   LDX #%00011110
   STX Ppu2001Buffer
-  RTS
-
-;----------
-
-SetPixelsPerFrameForLevel:
-  ; A = level
-  LDY #$01
-DivideBy8:
-  CMP #$08
-  BLT DivideBy8Done
-  SEC
-  SBC #$08
-  INY
-  JMP DivideBy8
-DivideBy8Done:
-  ; Y has value to initialize ActivePopcornPixelsPerFrame[0]-[7] with.
-  LDX #$00
-SetInitialePixelsFrames:
-  STY ActivePopcornPixelsPerFrame, X
-  INX
-  CPX #$08
-  BNE SetInitialePixelsFrames
-  ; A has number of frames to advance from there (see IncreaseLevel for algorithm).
-  LDX #$00
-AdvanceToCurrentFrame:
-  STA Temp
-  CPX Temp
-  BEQ AdvanceToCurrentFrameDone
-  LDA PixelsFrameIncrement, X ; Indexed by frame (0-7) to get index for element in ActivePopcornPixelsPerFrame to increment
-  STX Temp2
-  TAX
-  LDA Temp
-  INC ActivePopcornPixelsPerFrame, x
-  LDX Temp2
-  INX
-  JMP AdvanceToCurrentFrame
-AdvanceToCurrentFrameDone:
   RTS
 
 ;----------
@@ -443,29 +416,6 @@ LoadTestPopcornSprite:
   STX PpuSpriteBufferIndex
   LDX #$01
   STX NmiNeedDma
-  RTS
-
-;----------
-
-AdvanceTestPopcorn:
-  LDX ActivePopcornFallingFrame
-  LDA ActivePopcornPixelsPerFrame, X
-  CLC
-  ADC PpuSpriteBuffer + 80
-  STA PpuSpriteBuffer + 80
-  LDA ActivePopcornPixelsPerFrame, X
-  CLC
-  ADC PpuSpriteBuffer + 84
-  STA PpuSpriteBuffer + 84
-  LDX #$01
-  STX NmiNeedDma            ; Trigger sprite buffer to be sent to PPU next NMI.
-  INC ActivePopcornFallingFrame
-  LDA ActivePopcornFallingFrame
-  CMP #$08
-  BNE AdvanceTestPopcornDone
-  LDA #$00
-  STA ActivePopcornFallingFrame
-AdvanceTestPopcornDone:
   RTS
 
 ;----------
@@ -691,27 +641,85 @@ IncrementGameSpritePointerAndDecrementX:
 
 ;----------
 
-IncreaseLevel:
-  INC ActivePopcornLevel
-  LDA ActivePopcornLevel
-  AND #%111
-  TAX
-  LDA PixelsFrameIncrement, X
-  TAX
-  INC ActivePopcornPixelsPerFrame, x
+;LoadTempTestTable:
+;  LDX #00 ; Offset into TempTestTable
+;  STX Temp3
+;  LDX #00 ; Speed (0-16)
+;  LDY #00 ; Frame (0-7)
+;LoadTempTestTableLoop:
+;  JSR LoadAWithPixelsToDropPopcornAtSpeedAndFrame
+;  STX Temp4
+;  LDX Temp3
+;  STA TempTestTable, X
+;  INX
+;  STX Temp3
+;  LDX Temp4
+;  INY
+;  CPY #8
+;  BLT LoadTempTestTableLoop
+;  LDY #00
+;  INX
+;  CPX #17
+;  BLT LoadTempTestTableLoop
+;  RTS
+
+;----------
+
+LoadAWithPixelsToDropPopcornAtSpeedAndFrame:
+  ; in:  X = Speed (0-255)
+  ; in:  Y = Frame (0-7)
+  ; out: A = # pixels to drop popcorn
+  ;      (X + 7 - 3 * (Y mod 2) - (Y + 1) / 2) / 8 + 1
+
+  ; A = Y mod 2
+  TYA
+  JSR LoadAWithAModulus2
+
+  ; A = A * 3
+  STA Temp
+  ASL A
+  CLC
+  ADC Temp
+  
+  ; Store temporarily
+  STA Temp
+
+  ; A = (Y + 1) / 2
+  TYA
+  CLC
+  ADC #01
+  LSR A
+
+  ; Store temporarily
+  STA Temp2
+
+  ; A = X + 7 - Temp - Temp2
+  TXA
+  CLC
+  ADC #07
+  SEC
+  SBC Temp
+  SEC
+  SBC Temp2
+
+  ; A = A / 8 + 1
+  LSR A
+  LSR A
+  LSR A
+  CLC
+  ADC #01
+  
   RTS
 
 ;----------
 
-IncreaseLevelWhenBReleased:
-  LDA Player1PreviousButtons
-  AND #ButtonB
-  BEQ IncreaseLevelWhenBReleasedDone
-  LDA Player1Buttons
-  AND #ButtonB
-  BNE IncreaseLevelWhenBReleasedDone
-  JMP IncreaseLevel
-IncreaseLevelWhenBReleasedDone:
+LoadAWithAModulus2:
+  CMP #02
+  BLT LoadAWithAModulus2Done
+  SEC
+  SBC #02
+  JMP LoadAWithAModulus2
+LoadAWithAModulus2Done:
   RTS
 
 ;----------
@@ -847,12 +855,19 @@ StartNextActivePopcornDropping:
 ;----------
 
 LoadPopcornAtIndexYIntoSpritedListAtIndexX:
+  ; in:  X = index into Sprited Popcorn lists where popcorn is to be moved to
+  ; in:  Y = index into Shuffled Popcorn lists where popcorn is to be moved from
+  TYA
+  PHA
   LDA PopcornSpriteStartX, Y
   STA SpritedPopcornX, X
-  LDA PopcornSpriteStartY, Y
-  STA SpritedPopcornY, X
   JSR LoadAWithCurrentRowsPopcornTile
   STA SpritedPopcornTile, X
+  LDY ShuffledPopcornRowIndex
+  LDA PopcornSpriteStartY, Y
+  STA SpritedPopcornY, X
+  PLA
+  TAY
   RTS
 
 ;----------
@@ -1009,26 +1024,26 @@ AdvancePopcornDropping:
   ; their Y (or X if on conveyor).
   ; 
   ; Need to control speed of popcorn.
-  ; 1/8 pixel per frame per level
-  ; Start Level 0 at 1 pixel per frame
-  ; Level 1+: Increase pixels per 1st, 3rd, 5th, 7th, 2nd, 4th, 6th, 8th frame.   Repeat.
-  ; Level  0 = 1 1 1 1 1 1 1 1
-  ; Level  1 = 2 1 1 1 1 1 1 1
-  ; Level  2 = 2 1 2 1 1 1 1 1
-  ; Level  3 = 2 1 2 1 2 1 1 1
-  ; Level  4 = 2 1 2 1 2 1 2 1
-  ; Level  5 = 2 2 2 1 2 1 2 1
-  ; Level  6 = 2 2 2 2 2 1 2 1
-  ; Level  7 = 2 2 2 2 2 2 2 1
-  ; Level  8 = 2 2 2 2 2 2 2 2
-  ; Level  9 = 3 2 2 2 2 2 2 2
-  ; Level 10 = 3 2 3 2 2 2 2 2
-  ; Level 11 = 3 2 3 2 3 2 2 2
-  ; Level 12 = 3 2 3 2 3 2 3 2
-  ; Level 13 = 3 3 3 2 3 2 3 2
-  ; Level 14 = 3 3 3 3 3 2 3 2
-  ; Level 15 = 3 3 3 3 3 3 3 2
-  ; Level 16 = 3 3 3 3 3 3 3 3
+  ; 1/8 pixel per frame per speed
+  ; Start speed 0 at 1 pixel per frame
+  ; Speed 1+: Increase pixels per 1st, 3rd, 5th, 7th, 2nd, 4th, 6th, 8th frame.   Repeat.
+  ; Speed  0 = 1 1 1 1 1 1 1 1  (Speed+7)/8+1 = 0
+  ; Speed  1 = 2 1 1 1 1 1 1 1  (Speed+7)/8+1 = 0
+  ; Speed  2 = 2 1 2 1 1 1 1 1  (Speed+7)/8+1 = 0
+  ; Speed  3 = 2 1 2 1 2 1 1 1  (Speed+7)/8+1 = 0
+  ; Speed  4 = 2 1 2 1 2 1 2 1  (Speed+7)/8+1 = 0
+  ; Speed  5 = 2 2 2 1 2 1 2 1  (Speed+7)/8+1 = 0
+  ; Speed  6 = 2 2 2 2 2 1 2 1  (Speed+7)/8+1 = 0
+  ; Speed  7 = 2 2 2 2 2 2 2 1  (Speed+7)/8+1 = 0
+  ; Speed  8 = 2 2 2 2 2 2 2 2  (Speed+7)/8+1 = 0
+  ; Speed  9 = 3 2 2 2 2 2 2 2  (Speed+7)/8+1 = 0
+  ; Speed 10 = 3 2 3 2 2 2 2 2  (Speed+7)/8+1 = 0
+  ; Speed 11 = 3 2 3 2 3 2 2 2  (Speed+7)/8+1 = 0
+  ; Speed 12 = 3 2 3 2 3 2 3 2  (Speed+7)/8+1 = 0
+  ; Speed 13 = 3 3 3 2 3 2 3 2  (Speed+7)/8+1 = 0
+  ; Speed 14 = 3 3 3 3 3 2 3 2  (Speed+7)/8+1 = 0
+  ; Speed 15 = 3 3 3 3 3 3 3 2  (Speed+7)/8+1 = 0
+  ; Speed 16 = 3 3 3 3 3 3 3 3  (Speed+7)/8+1 = 0
   ; Subtract 8 until cant.  # of subtractions +1 initializes all 8 numbers.
   ; Follow algorithm with remainder to get 8 numbers for current level.
   RTS
