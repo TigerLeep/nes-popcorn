@@ -63,8 +63,6 @@ RandomNumber:                     .res 1   ;
 TempPointer:                      .res 2   ;
 Temp:                             .res 1   ;
 Temp2:                            .res 1   ;
-;Temp3:                            .res 1   ;
-;Temp4:                            .res 1   ;
 GameState:                        .res 1   ;
 ConveyorTile:                     .res 1   ; Current Conveyor tile in conveyor animation
 ConveyorFrameCount:               .res 1   ; # of frames since last Conveyor advance
@@ -83,7 +81,7 @@ CurrentFrameModulus8:             .res 1   ; Current frame # (0-7).
 
 PixelsToDropPopcornAtFrame:       .res 8   ; # pixels popcorn falls at frame #
 
-;TempTestTable:                    .res 8*17;
+TempTestTable:                    .res 8*17;
 
 ;----------
 
@@ -102,7 +100,7 @@ ResetInterruptHandler:
   JSR ClearMemory
   JSR WaitForVBlank
   JSR InitializeVariables
-  ;JSR LoadTempTestTable
+  JSR LoadTempTestTable
   LDA #%10000000      ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
   STA $2000           ; need NMI enabled now so buffers will get handled
   STA Ppu2000Buffer   ; need to also buffer so when buffers are handled, the value we just set isn't changed
@@ -641,27 +639,27 @@ IncrementGameSpritePointerAndDecrementX:
 
 ;----------
 
-;LoadTempTestTable:
-;  LDX #00 ; Offset into TempTestTable
-;  STX Temp3
-;  LDX #00 ; Speed (0-16)
-;  LDY #00 ; Frame (0-7)
-;LoadTempTestTableLoop:
-;  JSR LoadAWithPixelsToDropPopcornAtSpeedAndFrame
-;  STX Temp4
-;  LDX Temp3
-;  STA TempTestTable, X
-;  INX
-;  STX Temp3
-;  LDX Temp4
-;  INY
-;  CPY #8
-;  BLT LoadTempTestTableLoop
-;  LDY #00
-;  INX
-;  CPX #17
-;  BLT LoadTempTestTableLoop
-;  RTS
+LoadTempTestTable:
+  LDX #00 ; Offset into TempTestTable
+  STX Temp
+  LDX #00 ; Speed (0-16)
+  LDY #00 ; Frame (0-7)
+LoadTempTestTableLoop:
+  JSR LoadAWithPixelsToDropPopcornAtSpeedAndFrame
+  STX Temp2
+  LDX Temp
+  STA TempTestTable, X
+  INX
+  STX Temp
+  LDX Temp2
+  INY
+  CPY #8
+  BLT LoadTempTestTableLoop
+  LDY #00
+  INX
+  CPX #17
+  BLT LoadTempTestTableLoop
+  RTS
 
 ;----------
 
@@ -669,57 +667,16 @@ LoadAWithPixelsToDropPopcornAtSpeedAndFrame:
   ; in:  X = Speed (0-255)
   ; in:  Y = Frame (0-7)
   ; out: A = # pixels to drop popcorn
-  ;      (X + 7 - 3 * (Y mod 2) - (Y + 1) / 2) / 8 + 1
+  ;      (X + 15 - 3 * (Y mod 2) - (Y + 1) / 2) / 8
+  ;      Precalculated lookup for (15 - 3 * (Y mod 2) - (Y + 1) / 2) for Y = 0 to 7
+  ;      (X + lookup[Y]) / 8
 
-  ; A = Y mod 2
-  TYA
-  JSR LoadAWithAModulus2
-
-  ; A = A * 3
-  STA Temp
-  ASL A
-  CLC
-  ADC Temp
-  
-  ; Store temporarily
-  STA Temp
-
-  ; A = (Y + 1) / 2
-  TYA
-  CLC
-  ADC #01
-  LSR A
-
-  ; Store temporarily
-  STA Temp2
-
-  ; A = X + 7 - Temp - Temp2
   TXA
   CLC
-  ADC #07
-  SEC
-  SBC Temp
-  SEC
-  SBC Temp2
-
-  ; A = A / 8 + 1
+  ADC PixelsPerFrameIntermediateCalculationLookup, Y
+  ROR A
   LSR A
   LSR A
-  LSR A
-  CLC
-  ADC #01
-  
-  RTS
-
-;----------
-
-LoadAWithAModulus2:
-  CMP #02
-  BLT LoadAWithAModulus2Done
-  SEC
-  SBC #02
-  JMP LoadAWithAModulus2
-LoadAWithAModulus2Done:
   RTS
 
 ;----------
@@ -1102,8 +1059,9 @@ PopcornSpriteStartX:  ; Indexed by column (0-14)
 PopcornSpriteStartY:  ; Indexed by Row (0-4)
   .byte $07, $0F, $17, $1F, $27
 
-PixelsFrameIncrement: ; Lookup table for which PixelsFrame to increment for frame # mod 8 (0 - 7)
-  .byte $00, $02, $04, $06, $01, $03, $05, $07
+PixelsPerFrameIntermediateCalculationLookup:
+  .byte $0F, $0B, $0E, $0A, $0D, $09, $0C, $08
+
 
 ;----------
 
