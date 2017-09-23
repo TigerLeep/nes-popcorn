@@ -81,7 +81,7 @@ CurrentFrameModulus8:             .res 1   ; Current frame # (0-7).
 
 PixelsToDropPopcornAtFrame:       .res 8   ; # pixels popcorn falls at frame #
 
-TempTestTable:                    .res 8*17;
+;TempTestTable:                    .res 8*17;
 
 ;----------
 
@@ -100,7 +100,7 @@ ResetInterruptHandler:
   JSR ClearMemory
   JSR WaitForVBlank
   JSR InitializeVariables
-  JSR LoadTempTestTable
+;  JSR LoadTempTestTable
   LDA #%10000000      ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
   STA $2000           ; need NMI enabled now so buffers will get handled
   STA Ppu2000Buffer   ; need to also buffer so when buffers are handled, the value we just set isn't changed
@@ -639,27 +639,27 @@ IncrementGameSpritePointerAndDecrementX:
 
 ;----------
 
-LoadTempTestTable:
-  LDX #00 ; Offset into TempTestTable
-  STX Temp
-  LDX #00 ; Speed (0-16)
-  LDY #00 ; Frame (0-7)
-LoadTempTestTableLoop:
-  JSR LoadAWithPixelsToDropPopcornAtSpeedAndFrame
-  STX Temp2
-  LDX Temp
-  STA TempTestTable, X
-  INX
-  STX Temp
-  LDX Temp2
-  INY
-  CPY #8
-  BLT LoadTempTestTableLoop
-  LDY #00
-  INX
-  CPX #17
-  BLT LoadTempTestTableLoop
-  RTS
+;LoadTempTestTable:
+;  LDX #00 ; Offset into TempTestTable
+;  STX Temp
+;  LDX #00 ; Speed (0-16)
+;  LDY #00 ; Frame (0-7)
+;LoadTempTestTableLoop:
+;  JSR LoadAWithPixelsToDropPopcornAtSpeedAndFrame
+;  STX Temp2
+;  LDX Temp
+;  STA TempTestTable, X
+;  INX
+;  STX Temp
+;  LDX Temp2
+;  INY
+;  CPY #8
+;  BLT LoadTempTestTableLoop
+;  LDY #00
+;  INX
+;  CPX #17
+;  BLT LoadTempTestTableLoop
+;  RTS
 
 ;----------
 
