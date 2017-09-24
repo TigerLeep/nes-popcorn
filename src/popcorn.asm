@@ -31,14 +31,22 @@ GameState_InitializeStart = 1
 GameState_Start = 2
 GameState_InitializePlay = 3
 GameState_Play = 4
-GameState_InitializeGameOver = 5
-GameState_GameOver = 6
+GameState_InitializePlayerMissedPopcorn = 5
+GameState_PlayerMissedPopcorn = 6
+GameState_InitializeGameOver = 7
+GameState_GameOver = 8
 ConveyorFrameSpeed = 2
 ConveyorFirstTile = $0B
 ConveyorLastTile = $0E
 ConveyorBackgroundPpuAddress = $2340
 SpriteBufferUnusedFlag = $FE
 MaxXPositionOfPopcornOnConveyor = $FE
+MaxYPositionOfPopcornFalling = $CA
+SpriteBufferYOffset = 0
+SpriteBufferTileOffset = 1
+SpriteBufferAttributeOffset = 2
+SpriteBufferXOffset = 3
+SpriteBufferNextSpriteOffset = 4
 
 ;----------
 
@@ -111,7 +119,7 @@ CurrentFrameModulus8:             .res 1   ; Current frame # (0-7).
   INC NmiNeedPpuRegistersUpdated
   JSR WaitForNextNmiToFinish
   JSR LoadPalettes
-  JSR SwitchToGameStateInitializeStartScreen
+  JSR SwitchToGameStateInitializeStart
   JMP Main
 .endproc
 
@@ -223,11 +231,19 @@ Done:
   BEQ HandleInitializePlay
   CMP #GameState_Play
   BEQ HandlePlay
+  CMP #GameState_InitializePlayerMissedPopcorn
+  BEQ HandleInitializePlayerMissedPopcorn
+  CMP #GameState_PlayerMissedPopcorn
+  BEQ HandlePlayerMissedPopcorn
   CMP #GameState_InitializeGameOver
-  BEQ HandleInitializeGameOver
+  BEQ HandleInitializeGameOverShort
   CMP #GameState_GameOver
-  BEQ HandleGameOver
+  BEQ HandleGameOverShort
   JMP Main
+HandleGameOverShort:
+  JMP HandleGameOver
+HandleInitializeGameOverShort:
+  JMP HandleInitializeGameOver
 HandleInitializeStart:
   JSR DisableRendering
   JSR LoadStartBackground
@@ -260,7 +276,24 @@ HandlePlay:
   JSR StartNextShuffledPopcornDroppingWhenBPressed
   JSR WaitForNextNmiToFinish
   JMP Main
+HandleInitializePlayerMissedPopcorn:
+  JSR UpdateConveyor
+  JSR RemoveAllFallingSpritedPopcorn
+  JSR AlignConveyorPopcornVerticallyWithConveyor
+  JSR MoveOneSpritedPopcornAlongConveyor
+  JSR WaitForNextNmiToFinish
+  JSR SwitchToGameStatePlayerMissedPopcorn
+  JMP Main
+HandlePlayerMissedPopcorn:
+  JSR UpdateConveyor
+  JSR ReadControllers
+  JSR MoveOneSpritedPopcornAlongConveyor
+  JSR SwitchToGameStateInitializeGameOverIfNoMorePaddles
+  JSR WaitForNextNmiToFinish
+  JMP Main
 HandleInitializeGameOver:
+  JSR SwitchToGameStateGameOver;
+  JMP Main
 HandleGameOver:
   JSR UpdateConveyor
   JSR ReadControllers
@@ -295,13 +328,13 @@ HandleGameOver:
 ;----------
 
 .proc InitializeVariables
-  LDX #$08  ; Not to exceed $1F (31)
+  LDX #08  ; Not to exceed $1F (31)
   STX NormalPaddleSpeed
-  LDX #$05
+  LDX #05
   STX PaddleCount
   LDX #ConveyorFirstTile
   STX ConveyorTile
-  LDX #$00
+  LDX #00
   STX Player1PreviousButtons
   STX Player2PreviousButtons
   STX SpeedOfPopcornOnLowestRow
@@ -400,7 +433,7 @@ Loop:
 
 ;----------
 
-.proc SwitchToGameStateInitializeStartScreen
+.proc SwitchToGameStateInitializeStart
   LDA #GameState_InitializeStart
   STA GameState
   RTS
@@ -416,7 +449,7 @@ Loop:
 
 ;----------
 
-.proc SwitchToGameStateIntializePlayScreen
+.proc SwitchToGameStateInitializePlay
   LDA #GameState_InitializePlay
   STA GameState
   RTS
@@ -432,7 +465,23 @@ Loop:
 
 ;----------
 
-.proc SwitchToGameStateInitializeGameOverScreen
+.proc SwitchToGameStateInitializePlayerMissedPopcorn
+  LDA #GameState_InitializePlayerMissedPopcorn
+  STA GameState
+  RTS
+.endproc
+
+;----------
+
+.proc SwitchToGameStatePlayerMissedPopcorn
+  LDA #GameState_PlayerMissedPopcorn
+  STA GameState
+  RTS
+.endproc
+
+;----------
+
+.proc SwitchToGameStateInitializeGameOver
   LDA #GameState_InitializeGameOver
   STA GameState
   RTS
@@ -451,7 +500,7 @@ Loop:
 .proc SwitchToPlayStateWhenStartIsPressed
   LDA Player1Buttons
   AND #ButtonStart
-  BNE SwitchToGameStateIntializePlayScreen
+  BNE SwitchToGameStateInitializePlay
   RTS
 .endproc
 
@@ -666,6 +715,31 @@ Loop:
 ;
 ;----------
 
+.proc LoadAWithPixelsToDropPopcornAtSpritedPopcornIndexX
+  ; in: X = Index into Sprited Popcorn list
+  TXA
+  PHA
+  TYA
+  PHA
+
+  LDA SpritedPopcornSpeed, X
+  CLC
+  ADC #8
+  TAX
+  LDY CurrentFrameModulus8
+  JSR LoadAWithPixelsToDropPopcornAtSpeedAndFrame
+
+  STA Temp
+  PLA
+  TAY
+  PLA
+  TAX
+  LDA Temp
+  RTS
+.endproc
+
+;----------
+
 .proc LoadAWithPixelsToDropPopcornAtSpeedAndFrame
   ; in:  X = Speed (0-255)
   ; in:  Y = Frame (0-7)
@@ -693,6 +767,8 @@ Loop:
 
   STX ConveyorFrameCount
   RTS
+
+;----------
 
 AdvanceConveyor:
   LDX #$00
@@ -839,7 +915,10 @@ Done:
   STA SpritedPopcornSpeed, X
 
   ; Set Sprited Popcorn's PpuSpriteBuffer index (for first of Popcorn's two sprites)
-  LDA PpuSpriteBufferIndex
+  STX Temp
+  JSR LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSprites
+  TXA
+  LDX Temp
   STA SpritedPopcornSpriteBufferIndex, X
 
   ; Create Sprited Popcorn's two sprites (which hold X, Y and Tile) in PpuSpriteBuffer
@@ -867,34 +946,35 @@ Done:
   JSR LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSprites
 
   JSR LoadAWithYOfShuffledRow
-  STA PpuSpriteBuffer, X
-  STA PpuSpriteBuffer + 4, X
-  INX
+  STA PpuSpriteBuffer + SpriteBufferYOffset, X
+  STA PpuSpriteBuffer + SpriteBufferYOffset + SpriteBufferNextSpriteOffset, X
 
   JSR LoadAWithShuffledRowsPopcornTile
-  STA PpuSpriteBuffer, X
+  STA PpuSpriteBuffer + SpriteBufferTileOffset, X
   CLC
   ADC #1
-  STA PpuSpriteBuffer + 4, X
-  INX
+  STA PpuSpriteBuffer + SpriteBufferTileOffset + SpriteBufferNextSpriteOffset, X
 
   LDA #00
-  STA PpuSpriteBuffer, X
-  STA PpuSpriteBuffer + 4, X
-  INX
+  STA PpuSpriteBuffer + SpriteBufferAttributeOffset, X
+  STA PpuSpriteBuffer + SpriteBufferAttributeOffset + SpriteBufferNextSpriteOffset, X
 
   LDA PopcornSpriteStartX, Y
-  STA PpuSpriteBuffer, X
+  STA PpuSpriteBuffer + SpriteBufferXOffset, X
   CLC
   ADC #8
-  STA PpuSpriteBuffer + 4, X
+  STA PpuSpriteBuffer + SpriteBufferXOffset + SpriteBufferNextSpriteOffset, X
 
   TXA
   CLC
-  ADC #5
+  ADC #8
   
+  CMP PpuSpriteBufferIndex
+  BLT Done
+  BEQ Done
   STA PpuSpriteBufferIndex
 
+Done:
   PLA
   TAX
   RTS
@@ -1044,47 +1124,78 @@ Done:
   TYA
   PHA
   LDX #0
+
 Loop:
   CPX SpritedPopcornNextAvailableIndex
   BEQ Done
   LDY SpritedPopcornSpriteBufferIndex, X
+  JSR LoadAWithPixelsToDropPopcornAtSpritedPopcornIndexX
+  STA Temp
 
-  LDA PpuSpriteBuffer, Y
-  CMP #202
-  BLT Falling
+  LDA PpuSpriteBuffer + SpriteBufferYOffset, Y
+  CMP #MaxYPositionOfPopcornFalling
+  BLT MovePopcornDown
 
-Conveyor:
-  LDA PpuSpriteBuffer + 3, Y
-  CLC
-  ADC #1
-  STA PpuSpriteBuffer + 3, Y
-
-  LDA PpuSpriteBuffer + 7, Y
-  CLC
-  ADC #1
-  STA PpuSpriteBuffer + 7, Y
-
-  JMP DoneMoving
-
-Falling:
-  CLC
-  ADC #1
-  STA PpuSpriteBuffer, Y
-  STA PpuSpriteBuffer + 4, Y
-
-DoneMoving:
-  LDA PpuSpriteBuffer + 7, Y
-  CMP #MaxXPositionOfPopcornOnConveyor
-  BNE NextLoop
-
-  JSR RemovePopcornAtIndexYFromSpriteBuffer
-  JSR RemovePopcornAtIndexXFromSpritedPopcorn
-  ; Lose a paddle.
+FallingPopcornReachedConveyor:
+  JSR SwitchToGameStateInitializePlayerMissedPopcorn
   JMP Done
+
+MovePopcornDown:
+  CLC
+  ADC Temp
+  STA PpuSpriteBuffer + SpriteBufferYOffset, Y
+  STA PpuSpriteBuffer + SpriteBufferYOffset + SpriteBufferNextSpriteOffset, Y
 
 NextLoop:
   INX
   JMP Loop
+
+Done:
+  INC NmiNeedDma
+  PLA
+  TAY
+  PLA
+  TAX
+  RTS
+.endproc
+
+;----------
+
+.proc MoveOneSpritedPopcornAlongConveyor
+  TXA
+  PHA
+  TYA
+  PHA
+  LDX #0
+
+CheckIfAnyPopcornInSpritedList:
+  CPX SpritedPopcornNextAvailableIndex
+  BEQ Done
+  LDY SpritedPopcornSpriteBufferIndex, X
+
+CheckIfPopcornOnConveyor:
+  LDA PpuSpriteBuffer + SpriteBufferYOffset, Y
+  CMP #MaxYPositionOfPopcornFalling
+  BLT Done
+
+MovePopcornOnConveyor:
+  LDA PpuSpriteBuffer + SpriteBufferXOffset, Y
+  CLC
+  ADC #1
+  STA PpuSpriteBuffer + SpriteBufferXOffset, Y
+
+  ADC #8
+  STA PpuSpriteBuffer + SpriteBufferXOffset + SpriteBufferNextSpriteOffset, Y
+
+CheckIfPocornAtEndOfConveyor:
+  LDA PpuSpriteBuffer + SpriteBufferXOffset + SpriteBufferNextSpriteOffset, Y
+  CMP #MaxXPositionOfPopcornOnConveyor
+  BNE Done
+
+RemoveSpritedPopcornAndTopPaddle:
+  JSR RemoveTwoSpritesAtIndexYFromSpriteBuffer
+  JSR RemovePopcornAtIndexXFromSpritedPopcorn
+  JSR RemoveTopPaddle
 
 Done:
   INC NmiNeedDma
@@ -1119,8 +1230,26 @@ Done:
 
 ;----------
 
-.proc RemovePopcornAtIndexYFromSpriteBuffer
-  ; in: Y = Index into PpuSpriteBuffer for first of two Popcorn sprites to remove
+.proc RemoveFourSpritesAtIndexYFromSpriteBuffer
+  ; in: Y = Index into PpuSpriteBuffer for the first of the four sprites to remove
+  TYA
+  PHA
+  JSR RemoveTwoSpritesAtIndexYFromSpriteBuffer
+  TYA
+  CLC
+  ADC #8
+  TAY
+  JSR RemoveTwoSpritesAtIndexYFromSpriteBuffer
+  PLA
+  TAY
+  RTS
+.endproc
+
+;----------
+
+
+.proc RemoveTwoSpritesAtIndexYFromSpriteBuffer
+  ; in: Y = Index into PpuSpriteBuffer for the first of the two sprites to remove
   LDA #SpriteBufferUnusedFlag
   STA PpuSpriteBuffer + 0, Y
   STA PpuSpriteBuffer + 1, Y
@@ -1173,6 +1302,106 @@ Done:
   AND #ButtonB
   BEQ Done
   JMP StartNextShuffledPopcornDropping
+Done:
+  RTS
+.endproc
+
+;----------
+
+.proc RemoveTopPaddle
+  TYA
+  PHA
+  JSR LoadYWithIndexIntoSpriteBufferForTopPaddle
+  JSR RemoveFourSpritesAtIndexYFromSpriteBuffer
+  DEC PaddleCount
+  PLA
+  TAY
+  RTS
+.endproc
+
+;----------
+
+.proc LoadYWithIndexIntoSpriteBufferForTopPaddle
+  TYA
+  LDA #05
+  SEC
+  SBC PaddleCount ; 0 = first paddle in sprite buffer, 1 = second paddle, etc.
+  ASL
+  ASL ; * 4 == Sprite # (each paddle is 4 sprites)
+  ASL
+  ASL ; * 4 == Index into PpuSpriteBuffer (each sprite is 4 bytes)
+  TAY
+  RTS
+.endproc
+
+;----------
+
+.proc RemoveAllFallingSpritedPopcorn
+  TXA
+  PHA
+  TYA
+  PHA
+  LDX #0
+
+Loop:
+  CPX SpritedPopcornNextAvailableIndex
+  BGE Done
+  LDA SpritedPopcornSpriteBufferIndex, X
+  TAY
+  LDA PpuSpriteBuffer + SpriteBufferYOffset, Y
+  CMP #MaxYPositionOfPopcornFalling
+  BGE NextLoop
+
+  JSR RemoveTwoSpritesAtIndexYFromSpriteBuffer
+  JSR RemovePopcornAtIndexXFromSpritedPopcorn
+  DEX
+
+NextLoop:
+  INX
+  JMP Loop
+
+Done:
+  PLA
+  TAY
+  PLA
+  TAX
+  RTS
+.endproc
+
+;----------
+
+.proc AlignConveyorPopcornVerticallyWithConveyor
+  TXA
+  PHA
+  LDX #0
+
+Loop:
+  CPX SpritedPopcornNextAvailableIndex
+  BEQ Done
+  LDA SpritedPopcornSpriteBufferIndex, X
+  TAY
+  LDA PpuSpriteBuffer + SpriteBufferXOffset, Y
+  CMP MaxYPositionOfPopcornFalling
+  BLT NextLoop
+
+  LDA #MaxYPositionOfPopcornFalling
+  STA PpuSpriteBuffer + SpriteBufferYOffset, Y
+  STA PpuSpriteBuffer + SpriteBufferYOffset + SpriteBufferNextSpriteOffset, Y
+
+NextLoop:
+  INX
+  JMP Loop
+
+Done:
+  PLA
+  TAX
+  RTS
+.endproc
+
+.proc SwitchToGameStateInitializeGameOverIfNoMorePaddles
+  LDA PaddleCount
+  BNE Done
+  JMP SwitchToGameStateInitializeGameOver
 Done:
   RTS
 .endproc
