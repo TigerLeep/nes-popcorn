@@ -70,17 +70,18 @@ ConveyorFrameCount:               .res 1   ; # of frames since last Conveyor adv
 ShuffledPopcornRowIndex:          .res 1   ; Index of popcorn row currently queued for falling (0-4).  Tile is Row*2 (0, 2, 4, 6 or 8)
 ShuffledPopcornIndexes:           .res 15  ; Column index (0-14).  Filled with shuffled 0-14.  Indicates the order popcorn falls in row.
 ShuffledPopcornNextQueuedIndex:   .res 1   ; Index into ShuffledPopcornIndexes for next popcorn to fall (0-14)
+
 SpritedPopcornX:                  .res 15  ; X of sprited popcorn
 SpritedPopcornY:                  .res 15  ; Y of sprited popcorn
 SpritedPopcornTile:               .res 15  ; Index of first tile of sprited popcorn
 SpritedPopcornSpeed:              .res 15  ; Speed (0-255) of sprited popcorn
+SpritedPopcornSpriteBufferIndex:  .res 15  ; Index of popcorn's Sprite in PpuSpriteBuffer
 SpritedPopcornNextAvailableIndex: .res 1   ; Index into sprited popcorn lists of next available spot to store a sprited popcorn
 
 SpeedOfPopcornOnLowestRow:        .res 1   ; The speed (0-255) of popcorn on lowest row of current level
 CurrentFrameModulus8:             .res 1   ; Current frame # (0-7).
 
-PixelsToDropPopcornAtFrame:       .res 8   ; # pixels popcorn falls at frame #
-
+; This can't be in ZP any more (no room).  $100 is stack, $200 is PpuSpriteBuffer, $300 is PpuDrawingBuffer.  $400 is available.
 ;TempTestTable:                    .res 8*17;
 
 ;----------
@@ -241,8 +242,8 @@ HandleInitializePlay:
   JSR DisableRendering
   JSR LoadPlayBackground
   JSR LoadInitialPaddleSprites
-  JSR LoadTestPopcornSprite
   JSR InitializePopcorn
+  JSR StartNextShuffledPopcornDropping
   JSR WaitForNextNmiToFinish
   JSR EnableRendering
   JSR SwitchToGameStatePlay
@@ -251,6 +252,8 @@ HandlePlay:
   JSR UpdateConveyor
   JSR UpdatePaddles
   JSR ReadControllers
+  JSR AdvanceSpritedPopcorn
+  JSR StartNextShuffledPopcornDroppingWhenBPressed
   JSR WaitForNextNmiToFinish
   JMP Main
 HandleInitializeGameOver:
@@ -314,6 +317,8 @@ InitializeVariables:
 InitializePopcorn:
   LDX #04
   STX ShuffledPopcornRowIndex
+  LDX #00 
+  STX SpritedPopcornNextAvailableIndex
   JSR InitializeCurrentShuffledPopcornRow
   RTS
 
@@ -336,7 +341,7 @@ ClearMemoryLoop:
 ;----------
 
 ClearSprites:
-  LDX #$00
+  LDX #00
   LDA #$FE
 ClearSpritesLoop:
   STA $0200, x
@@ -366,8 +371,8 @@ LoadPalettesLoop:
 ;----------
 
 LoadInitialPaddleSprites:
-  LDX PpuSpriteBufferIndex
-  LDY #0
+  LDX #0
+  LDY PpuSpriteBufferIndex
 LoadInitialPaddleSpritesLoop:
   LDA PaddleSprites, X
   STA PpuSpriteBuffer, Y
@@ -376,44 +381,7 @@ LoadInitialPaddleSpritesLoop:
   CPY #80
   BNE LoadInitialPaddleSpritesLoop
   STX PpuSpriteBufferIndex
-  LDX #$01
-  STX NmiNeedDma
-  RTS
-
-;----------
-
-LoadTestPopcornSprite:
-  LDX PpuSpriteBufferIndex
-  ;vert tile attr horiz
-  LDA PopcornSpriteStartY + 4
-  STA PpuSpriteBuffer, X
-  INX
-  LDA #$08
-  STA PpuSpriteBuffer, X
-  INX
-  LDA #$00
-  STA PpuSpriteBuffer, X
-  INX
-  LDA PopcornSpriteStartX + 3
-  STA PpuSpriteBuffer, X
-  INX
-  LDA PopcornSpriteStartY + 4
-  STA PpuSpriteBuffer, X
-  INX
-  LDA #$09
-  STA PpuSpriteBuffer, X
-  INX
-  LDA #$00
-  STA PpuSpriteBuffer, X
-  INX
-  LDA PopcornSpriteStartX + 3
-  CLC
-  ADC #$08
-  STA PpuSpriteBuffer, X
-  INX
-  STX PpuSpriteBufferIndex
-  LDX #$01
-  STX NmiNeedDma
+  INC NmiNeedDma
   RTS
 
 ;----------
@@ -497,7 +465,7 @@ LoadBackground:
   LDX #$04
   LDY #$00
 LoadBackgroundLoop:
-  LDA (BackgroundPointer), y    ; copy one background byte from address in pointer plus Y
+  LDA (BackgroundPointer), Y    ; copy one background byte from address in pointer plus Y
   STA $2007                   ; this runs 256 * 4 times
   INY                         ; inside loop counter
   BNE LoadBackgroundLoop      ; run the inside loop 256 times before continuing down
@@ -729,8 +697,7 @@ BufferConveyorLoop:
   BNE BufferConveyorLoop
   LDA #$00
   STA PpuDrawingBuffer, X;  Flag end of buffers
-  LDA #$01
-  STA NmiNeedDraw
+  INC NmiNeedDraw
   RTS
 
 ;----------
@@ -738,8 +705,6 @@ BufferConveyorLoop:
 InitializeCurrentShuffledPopcornRow:
   JSR ResetCurrentShuffledPopcornRow
   JMP RandomizeShuffledPopcorn
-  LDX #14
-  STX ShuffledPopcornNextQueuedIndex
   RTS
 
 ;----------
@@ -752,6 +717,8 @@ ResetCurrentShuffledPopcornRowLoop:
   INX
   CPX #15
   BNE ResetCurrentShuffledPopcornRowLoop
+  LDX #14
+  STX ShuffledPopcornNextQueuedIndex
   RTS
 
 ;----------
@@ -801,30 +768,107 @@ SwapShuffledPopcornIndexesXAndY:
 
 ;----------
 
-StartNextActivePopcornDropping:
-  ; Remove the next popcorn from the Shuffled list and add it to the Sprited list.
-  JSR LoadYWithIndexOfNextQueuedShuffledPopcorn
-  LDX SpritedPopcornNextAvailableIndex
-  JSR AdjustShuffledAndSpritedIndexes
-  JSR LoadPopcornAtIndexYIntoSpritedListAtIndexX
-  JMP ClearPopcornAtIndexYFromBackground
+StartNextShuffledPopcornDropping:
+  JSR ConvertNextShuffledPopcornToSpritedPopcorn
+  JMP AdjustShuffledAndSpritedIndexes
 
 ;----------
 
-LoadPopcornAtIndexYIntoSpritedListAtIndexX:
-  ; in:  X = index into Sprited Popcorn lists where popcorn is to be moved to
-  ; in:  Y = index into Shuffled Popcorn lists where popcorn is to be moved from
+ConvertNextShuffledPopcornToSpritedPopcorn:
   TYA
   PHA
-  LDA PopcornSpriteStartX, Y
-  STA SpritedPopcornX, X
-  JSR LoadAWithCurrentRowsPopcornTile
-  STA SpritedPopcornTile, X
-  LDY ShuffledPopcornRowIndex
-  LDA PopcornSpriteStartY, Y
-  STA SpritedPopcornY, X
+  TXA
+  PHA
+
+  JSR LoadYWithIndexOfNextQueuedShuffledPopcorn
+  LDX SpritedPopcornNextAvailableIndex
+
+  ; Set Sprited Popcorn's Speed
+  JSR LoadAWithSpeedOfPopcornAtShuffledRow
+  STA SpritedPopcornSpeed, X
+
+  ; Set Sprited Popcorn's PpuSpriteBuffer index (for first of Popcorn's two sprites)
+  LDA PpuSpriteBufferIndex
+  STA SpritedPopcornSpriteBufferIndex, X
+
+  ; Create Sprited Popcorn's two sprites (which hold X, Y and Tile) in PpuSpriteBuffer
+  JSR AddSpritesToSpriteBufferForShuffledPopcornAtColumnY
+
+  ; Remove Popcorn tiles from background
+  JSR ClearPopcornAtIndexYFromBackground
+
+  PLA
+  TAX
   PLA
   TAY
+  RTS
+
+;----------
+
+AddSpritesToSpriteBufferForShuffledPopcornAtColumnY:
+  ; in: Y = Index of column (0-14) of shuffled popcorn to add sprites for
+  ;
+  ; Sprite Buffer: Y, Tile, Attribute, X
+  TXA
+  PHA
+  
+  JSR LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSprites
+
+  JSR LoadAWithYOfShuffledRow
+  STA PpuSpriteBuffer, X
+  STA PpuSpriteBuffer + 4, X
+  INX
+
+  JSR LoadAWithShuffledRowsPopcornTile
+  STA PpuSpriteBuffer, X
+  CLC
+  ADC #1
+  STA PpuSpriteBuffer + 4, X
+  INX
+
+  LDA #00
+  STA PpuSpriteBuffer, X
+  STA PpuSpriteBuffer + 4, X
+  INX
+
+  LDA PopcornSpriteStartX, Y
+  STA PpuSpriteBuffer, X
+  CLC
+  ADC #8
+  STA PpuSpriteBuffer + 4, X
+
+  TXA
+  CLC
+  ADC #5
+  
+  STA PpuSpriteBufferIndex
+
+  PLA
+  TAX
+  RTS
+
+
+
+;----------
+
+LoadAWithYOfShuffledRow:
+  TYA
+  PHA
+  LDY ShuffledPopcornRowIndex
+  LDA PopcornSpriteStartY, Y
+  STA Temp
+  PLA
+  TAY
+  LDA Temp
+  RTS
+
+;----------
+
+LoadAWithSpeedOfPopcornAtShuffledRow:
+  LDA #4
+  SEC
+  SBC ShuffledPopcornRowIndex
+  ADC SpeedOfPopcornOnLowestRow
   RTS
 
 ;----------
@@ -851,18 +895,20 @@ AdjustShuffledAndSpritedIndexes:
   INC SpritedPopcornNextAvailableIndex
   RTS
 
-LoadAWithCurrentRowsPopcornTile:
+;----------
+
+LoadAWithShuffledRowsPopcornTile:
   LDA ShuffledPopcornRowIndex
-  ASL A                         ; Popcorn row index (0-4) * 2 == popcorn's tile index
+  ASL A                       ; Popcorn row index (0-4) * 2 = popcorn's tile index
   RTS
 
 ;----------
 
 ClearPopcornAtIndexYFromBackground:
-  TXA
-  PHA
+  ; in: Y = Index of column for popcorn of which we're going to clear the background
   TYA
   PHA
+
   ASL A
   LDY ShuffledPopcornRowIndex
   CLC
@@ -871,40 +917,46 @@ ClearPopcornAtIndexYFromBackground:
   LDA #$20
   STA TempPointer
   JSR BufferPopcornBlanking
+
   PLA
   TAY
-  PLA
-  TAX
   RTS
 
 ;----------
 
 BufferPopcornBlanking:
+  ; in: TempPointer = PPU Address of background tile for popcorn to blank
+  ; 
   ;   Byte 0  = length                             
   ;   Byte 1  = high byte of the PPU address       
   ;   Byte 2  = low byte of the PPU address        
   ;   Byte 3  = reserved for now
   ;   Byte 4+ = {length} bytes
+  TXA
+  PHA
+  
   JSR SetXToNextDrawingBuffer
   LDA #$02
-  STA PpuDrawingBuffer, X
+  STA PpuDrawingBuffer, X ; length
   INX
   LDA TempPointer
-  STA PpuDrawingBuffer, X
+  STA PpuDrawingBuffer, X ; high byte of the PPU address
   INX
   LDA TempPointer+1
-  STA PpuDrawingBuffer, X
+  STA PpuDrawingBuffer, X ; low byte of the PPU address
   INX
-  INX
+  INX                     ; reserved for now
   LDA #BlankTile
-  STA PpuDrawingBuffer, X
+  STA PpuDrawingBuffer, X ; First of 2 (length) bytes
   INX
-  STA PpuDrawingBuffer, X
+  STA PpuDrawingBuffer, X ; Second of 2 (length) bytes
   INX
   LDA #$00
   STA PpuDrawingBuffer, X;  Flag end of buffers
-  LDA #$01
-  STA NmiNeedDraw
+  INC NmiNeedDraw
+
+  PLA
+  TAX
   RTS
 
 ;----------
@@ -916,12 +968,120 @@ SetXToNextDrawingBufferLoop:
   LDY PpuDrawingBuffer, X ; Length of this buffer's data
   BEQ SetXToNextDrawingBufferDone
   CLC
-  ADC 4
+  ADC #4
   CLC
   ADC PpuDrawingBuffer, X
   TAX
   JMP SetXToNextDrawingBufferLoop
 SetXToNextDrawingBufferDone:
+  RTS
+
+;----------
+
+AdvanceSpritedPopcorn:
+  TXA
+  PHA
+  TYA
+  PHA
+  LDX #0
+AdvanceSpritedPopcornLoop:
+  CPX SpritedPopcornNextAvailableIndex
+  BEQ AdvanceSpritedPopcornDone
+  LDY SpritedPopcornSpriteBufferIndex, X
+
+  LDA PpuSpriteBuffer, Y
+  CMP #202
+  BLT AdvanceSpritedPopcornFalling
+
+AdvanceSpritedPopcornConveyor:
+  LDA PpuSpriteBuffer + 3, Y
+  CLC
+  ADC #1
+  STA PpuSpriteBuffer + 3, Y
+
+  LDA PpuSpriteBuffer + 7, Y
+  CLC
+  ADC #1
+  STA PpuSpriteBuffer + 7, Y
+
+  JMP AdvanceSpritedPopcornDoneMoving
+
+AdvanceSpritedPopcornFalling:
+  CLC
+  ADC #1
+  STA PpuSpriteBuffer, Y
+  STA PpuSpriteBuffer + 4, Y
+
+AdvanceSpritedPopcornDoneMoving:
+  LDA PpuSpriteBuffer + 7, Y
+  CMP #$FE
+  BNE AdvanceSpritedPopcornNext
+  JSR RemovePopcornAtIndexYFromSpriteBuffer
+  ; Lose a paddle.
+
+AdvanceSpritedPopcornNext:
+  INX
+  JMP AdvanceSpritedPopcornLoop
+AdvanceSpritedPopcornDone:
+  INC NmiNeedDma
+  PLA
+  TAY
+  PLA
+  TAX
+  RTS
+
+;----------
+
+RemovePopcornAtIndexYFromSpriteBuffer:
+  ; in: Y = Index into PpuSpriteBuffer for first of two Popcorn sprites to remove
+  LDA #$FE
+  STA PpuSpriteBuffer + 0, Y
+  STA PpuSpriteBuffer + 1, Y
+  STA PpuSpriteBuffer + 2, Y
+  STA PpuSpriteBuffer + 3, Y
+  STA PpuSpriteBuffer + 4, Y
+  STA PpuSpriteBuffer + 5, Y
+  STA PpuSpriteBuffer + 6, Y
+  STA PpuSpriteBuffer + 7, Y
+  INC NmiNeedDma
+  RTS
+
+;----------
+
+LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSprites:
+  LDX #00
+
+LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSpritesLoop:
+  LDA PpuSpriteBuffer + 1, X
+  CMP #$FE
+  BNE LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSpritesNext
+  LDA PpuSpriteBuffer + 5, X
+  CMP #$FE
+  BNE LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSpritesNext
+  JMP LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSpritesDone
+
+LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSpritesNext:
+  INX
+  INX
+  INX
+  INX
+  JMP LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSpritesLoop
+
+LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSpritesDone:
+  RTS
+
+;----------
+
+StartNextShuffledPopcornDroppingWhenBPressed:
+  LDA Player1PreviousButtons
+  AND #ButtonB
+  BNE StartNextShuffledPopcornDroppingWhenBPressedDone
+  LDA Player1Buttons
+  AND #ButtonB
+  BEQ StartNextShuffledPopcornDroppingWhenBPressedDone
+  JSR StartNextShuffledPopcornDropping
+
+StartNextShuffledPopcornDroppingWhenBPressedDone:
   RTS
 
 ;----------
