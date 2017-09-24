@@ -89,7 +89,7 @@ CurrentFrameModulus8:             .res 1   ; Current frame # (0-7).
 .segment "STARTUP"
 .segment "CODE"
 
-ResetInterruptHandler:
+.proc ResetInterruptHandler
   LDX #$FF
   TXS
   SEI                 ; disable IRQs
@@ -113,10 +113,11 @@ ResetInterruptHandler:
   JSR LoadPalettes
   JSR SwitchToGameStateInitializeStartScreen
   JMP Main
+.endproc
 
 ;----------
 
-NmiInterruptHandler:
+.proc NmiInterruptHandler
   PHA                               ; back up registers (important)
   TXA
   PHA
@@ -159,34 +160,36 @@ DoneNeedRegisters:
   TAX
   PLA
   RTI
+.endproc
 
 ;----------
 
-IncrementCurrentFrameModulus8:
+.proc IncrementCurrentFrameModulus8
   INC CurrentFrameModulus8
   LDA CurrentFrameModulus8
   CMP #08
-  BLT IncrementCurrentFrameModulus8Done
+  BLT Done
   LDA #00
   STA CurrentFrameModulus8
-IncrementCurrentFrameModulus8Done:
+Done:
   RTS
+.endproc
 
 ;----------
 
-XferDrawingsToPpu:
-; Input data has the following format:           
-;   Byte 0  = length                             
-;   Byte 1  = high byte of the PPU address       
-;   Byte 2  = low byte of the PPU address        
-;   Byte 3  = reserved for now
-;   Byte 4+ = {length} bytes                     
-; Repeat until length == 0 is found.             
+.proc XferDrawingsToPpu
+  ; Input data has the following format:           
+  ;   Byte 0  = length                             
+  ;   Byte 1  = high byte of the PPU address       
+  ;   Byte 2  = low byte of the PPU address        
+  ;   Byte 3  = reserved for now
+  ;   Byte 4+ = {length} bytes                     
+  ; Repeat until length == 0 is found.             
   LDX #$00
   LDA $2002                 ; read PPU status to reset the high/low latch
-XferDrawingsToPpuLoop:
+DrawingsLoop:
   LDY PpuDrawingBuffer, X   ; load the length of the data to the Y register
-  BEQ DoneXferDrawingsToPpu ; length equal 0 means that the drawing is done  
+  BEQ Done                  ; length equal 0 means that the drawing is done  
   INX                       ; X = 1
   LDA PpuDrawingBuffer, X   ; load the high byte of the target address
   STA $2006                 ; write the high byte to PPU
@@ -194,22 +197,23 @@ XferDrawingsToPpuLoop:
   LDA PpuDrawingBuffer, X   ; load the low byte of the target address
   STA $2006                 ; write the low byte to PPU
   INX                       ; X = 3 (reserved for now)
-XferDrawingToPpuLoop:
+DrawingLoop:
   INX                       ; increment X so it points to the next byte
   LDA PpuDrawingBuffer, X   ; load a byte of the data
   STA $2007                 ; write it to PPU
   DEY                       ; decrement Y
-  BNE XferDrawingToPpuLoop  ; if Y != 0 jump to .setLoop
+  BNE DrawingLoop           ; if Y != 0 jump to .setLoop
   INX                       ; increment X so it points to the next segment      
-  JMP XferDrawingsToPpuLoop ; jump back to .drawLoop
-DoneXferDrawingsToPpu:
+  JMP DrawingsLoop          ; jump back to .drawLoop
+Done:
   LDA #$00
-  STA PpuDrawingBuffer ; Reset buffer
+  STA PpuDrawingBuffer      ; Reset buffer
   RTS
+.endproc
 
 ;----------
 
-Main:
+.proc Main
   LDA GameState
   CMP #GameState_InitializeStart
   BEQ HandleInitializeStart
@@ -262,31 +266,35 @@ HandleGameOver:
   JSR ReadControllers
   JSR WaitForNextNmiToFinish
   JMP Main
+.endproc
 
 ;----------
 
-DisableRendering:
+.proc DisableRendering
   LDA #%00000110   ; disable sprites & background, don't hide sprites or background in left 8 pixels, color mode
   STA $2001
   RTS
+.endproc
 
 ;----------
 
-EnableRendering:
+.proc EnableRendering
   LDA #%00011110   ; enable sprites & background, don't hide sprites or background in left 8 pixels, color mode
   STA $2001
   RTS
+.endproc
 
 ;----------
 
-WaitForVBlank:
+.proc WaitForVBlank
   BIT $2002
   BPL WaitForVBlank
   RTS
+.endproc
 
 ;----------
 
-InitializeVariables:
+.proc InitializeVariables
   LDX #$08  ; Not to exceed $1F (31)
   STX NormalPaddleSpeed
   LDX #$05
@@ -311,22 +319,24 @@ InitializeVariables:
   LDX #%00011110
   STX Ppu2001Buffer
   RTS
+.endproc
 
 ;----------
 
-InitializePopcorn:
+.proc InitializePopcorn
   LDX #04
   STX ShuffledPopcornRowIndex
   LDX #00 
   STX SpritedPopcornNextAvailableIndex
   JSR InitializeCurrentShuffledPopcornRow
   RTS
+.endproc
 
 ;----------
 
-ClearMemory:
+.proc ClearMemory
   LDX #$00
-ClearMemoryLoop:
+Loop:
   LDA #$00
   STA $0000, x
   STA $0300, x
@@ -335,148 +345,162 @@ ClearMemoryLoop:
   STA $0600, x
   STA $0700, x
   INX
-  BNE ClearMemoryLoop
+  BNE Loop
   RTS
+.endproc
 
 ;----------
 
-ClearSprites:
+.proc ClearSprites
   LDX #00
   LDA #$FE
-ClearSpritesLoop:
+Loop:
   STA $0200, x
   INX
-  BNE ClearSpritesLoop
+  BNE Loop
   INC NmiNeedDma
   RTS
+.endproc
 
 ;----------
 
-LoadPalettes:
-  LDA $2002             ; read PPU status to reset the high/low latch
+.proc LoadPalettes
+  LDA $2002       ; read PPU status to reset the high/low latch
   LDA #$3F
-  STA $2006             ; write the high byte of $3F00 address
+  STA $2006       ; write the high byte of $3F00 address
   LDA #$00
-  STA $2006             ; write the low byte of $3F00 address
-  LDX #$00              ; start out at 0
-LoadPalettesLoop:
-  LDA Palette, x        ; load data from address (Palette + the value in x)
-  STA $2007             ; write to PPU
-  INX                   ; X = X + 1
-  CPX #$20              ; Compare X to hex $10, decimal 16 - copying 16 bytes = 4 sprites
-  BNE LoadPalettesLoop  ; Branch to LoadPalettesLoop if compare was Not Equal to zero
-                        ; if compare was equal to 32, keep going down
+  STA $2006       ; write the low byte of $3F00 address
+  LDX #$00        ; start out at 0
+Loop:
+  LDA Palette, x  ; load data from address (Palette + the value in x)
+  STA $2007       ; write to PPU
+  INX             ; X = X + 1
+  CPX #$20        ; Compare X to hex $10, decimal 16 - copying 16 bytes = 4 sprites
+  BNE Loop        ; Branch to LoadPalettesLoop if compare was Not Equal to zero
+                  ; if compare was equal to 32, keep going down
   RTS
+.endproc
 
 ;----------
 
-LoadInitialPaddleSprites:
+.proc LoadInitialPaddleSprites
   LDX #0
   LDY PpuSpriteBufferIndex
-LoadInitialPaddleSpritesLoop:
+Loop:
   LDA PaddleSprites, X
   STA PpuSpriteBuffer, Y
   INX
   INY
   CPY #80
-  BNE LoadInitialPaddleSpritesLoop
+  BNE Loop
   STX PpuSpriteBufferIndex
   INC NmiNeedDma
   RTS
+.endproc
 
 ;----------
 
-SwitchToGameStateInitializeStartScreen:
+.proc SwitchToGameStateInitializeStartScreen
   LDA #GameState_InitializeStart
   STA GameState
   RTS
+.endproc
 
 ;----------
 
-SwitchToGameStateStart:
+.proc SwitchToGameStateStart
   LDA #GameState_Start
   STA GameState
   RTS
+.endproc
 
 ;----------
 
-SwitchToGameStateIntializePlayScreen:
+.proc SwitchToGameStateIntializePlayScreen
   LDA #GameState_InitializePlay
   STA GameState
   RTS
+.endproc
 
 ;----------
 
-SwitchToGameStatePlay:
+.proc SwitchToGameStatePlay
   LDA #GameState_Play
   STA GameState
   RTS
+.endproc
 
 ;----------
 
-SwitchToGameStateInitializeGameOverScreen:
+.proc SwitchToGameStateInitializeGameOverScreen
   LDA #GameState_InitializeGameOver
   STA GameState
   RTS
+.endproc
 
 ;----------
 
-SwitchToGameStateGameOver:
+.proc SwitchToGameStateGameOver
   LDA #GameState_GameOver
   STA GameState
   RTS
+.endproc
 
 ;----------
 
-SwitchToPlayStateWhenStartIsPressed:
+.proc SwitchToPlayStateWhenStartIsPressed
   LDA Player1Buttons
   AND #ButtonStart
   BNE SwitchToGameStateIntializePlayScreen
   RTS
+.endproc
 
 ;----------
 
-LoadStartBackground:
+.proc LoadStartBackground
   LDA #<StartBackground
   STA BackgroundPointer
   LDA #>StartBackground
   STA BackgroundPointer + 1
   JSR LoadBackground
   RTS
+.endproc
 
 ;----------
 
-LoadPlayBackground:
+.proc LoadPlayBackground
   LDA #<PlayBackground
   STA BackgroundPointer
   LDA #>PlayBackground
   STA BackgroundPointer + 1
   JSR LoadBackground
   RTS
+.endproc
 
 ;----------
 
-LoadBackground:
-  LDA $2002             ; read PPU status to reset the high/low latch
+.proc LoadBackground
+  LDA $2002                   ; read PPU status to reset the high/low latch
   LDA #$20
-  STA $2006             ; write the high byte of PPU address
+  STA $2006                   ; write the high byte of PPU address
   LDA #$00
-  STA $2006             ; write the low byte of PPU address
+  STA $2006                   ; write the low byte of PPU address
   LDX #$04
   LDY #$00
-LoadBackgroundLoop:
-  LDA (BackgroundPointer), Y    ; copy one background byte from address in pointer plus Y
+Loop:
+  LDA (BackgroundPointer), Y  ; copy one background byte from address in pointer plus Y
   STA $2007                   ; this runs 256 * 4 times
   INY                         ; inside loop counter
-  BNE LoadBackgroundLoop      ; run the inside loop 256 times before continuing down
+  BNE Loop                    ; run the inside loop 256 times before continuing down
   INC BackgroundPointer + 1   ; low byte went 0 to 256, so high byte needs to be changed now
   DEX
-  BNE LoadBackgroundLoop      ; Until X drops to #$00, we keep looping back for another 256 bytes.
+  BNE Loop                    ; Until X drops to #$00, we keep looping back for another 256 bytes.
   RTS
+.endproc
 
 ;----------
 
-ReadControllers:
+.proc ReadControllers
   LDA #$01
   STA $4016 ; Start controller button states being continuously written to $4016 and $4017
   LDA #$00
@@ -493,7 +517,7 @@ ReadControllers:
   ; then into our PlayerXButtons variables (ROL - Rotate Left). The end result will be bits
   ; 7 - 0 having the states of buttons A, B, Select, Start, Up, Down, Left and Right.
   LDX #$08
-ReadControllersLoop:
+Loop:
   LDA $4016
   LSR A               ; bit 0 -> Carry
   ROL Player1Buttons  ; bit 0 <- Carry
@@ -501,12 +525,12 @@ ReadControllersLoop:
   LSR A               ; bit 0 -> Carry
   ROL Player2Buttons  ; bit 0 <- Carry
   DEX
-  BNE ReadControllersLoop
+  BNE Loop
   RTS
-
+.endproc
 ;----------
 
-UpdatePaddles:
+.proc UpdatePaddles
   LDA Player1Buttons
   AND #ButtonLeft
   BNE MovePaddlesLeft
@@ -514,35 +538,40 @@ UpdatePaddles:
   AND #ButtonRight
   BNE MovePaddlesRight
   RTS
+.endproc
 
 ;----------
 
-MovePaddlesLeft:
+.proc MovePaddlesLeft
   JSR InitializeMovingPaddles
   LDA (GameSpritePointer),Y
   SEC
   SBC NormalPaddleSpeed
   BGE UseNormalLeftPaddleSpeed
+
 UseAdjustedLeftPaddleSpeed:
   LDA (GameSpritePointer),Y
   STA CurrentPaddleSpeed
-  JMP MovePaddlesLeftLoop
+  JMP Loop
+
 UseNormalLeftPaddleSpeed:
   LDA NormalPaddleSpeed
   STA CurrentPaddleSpeed
-MovePaddlesLeftLoop:
+
+Loop:
   LDA (GameSpritePointer),Y
   SEC
   SBC CurrentPaddleSpeed
   STA (GameSpritePointer),Y
   JSR IncrementGameSpritePointerAndDecrementX
-  BNE MovePaddlesLeftLoop
+  BNE Loop
   INC NmiNeedDma
   RTS
+.endproc
 
 ;----------
 
-MovePaddlesRight:
+.proc MovePaddlesRight
   JSR InitializeMovingPaddles
   LDA (GameSpritePointer),Y
   CLC
@@ -553,7 +582,7 @@ UseAdjustedRightPaddleSpeed:
   ; A is over #$E0 by somewhere between #$00 and #$1F (31).
   ; We need to subtract that amount from NormalPaddleSpeed in
   ; order to get the adjusted CurrentPaddleSpeed.
-  ; 1 - subtract #$E00 from A and store that temporarily.
+  ; 1 - subtract #$E0 from A and store that temporarily.
   ; 2 - Load NormalPaddleSpeed into A.
   ; 3 - subtract the temporarily stored value from A.
   ; A now has the adjusted Paddle Speed.  Store that in
@@ -565,23 +594,26 @@ UseAdjustedRightPaddleSpeed:
   SEC
   SBC CurrentPaddleSpeed
   STA CurrentPaddleSpeed
-  JMP MovePaddlesRightLoop
+  JMP Loop
+
 UseNormalRightPaddleSpeed:
   LDA NormalPaddleSpeed
   STA CurrentPaddleSpeed
-MovePaddlesRightLoop:
+
+Loop:
   LDA (GameSpritePointer),Y
   CLC
   ADC CurrentPaddleSpeed
   STA (GameSpritePointer),Y
   JSR IncrementGameSpritePointerAndDecrementX
-  BNE MovePaddlesRightLoop
+  BNE Loop
   INC NmiNeedDma
   RTS
+.endproc
 
 ;----------
 
-InitializeMovingPaddles:
+.proc InitializeMovingPaddles
   LDA #>PpuSpriteBuffer
   STA GameSpritePointer+1
   LDA #<PpuSpriteBuffer
@@ -591,10 +623,11 @@ InitializeMovingPaddles:
   LDY #$00
   LDX #20
   RTS
+.endproc
 
 ;----------
 
-IncrementGameSpritePointerAndDecrementX:
+.proc IncrementGameSpritePointerAndDecrementX
   LDA GameSpritePointer
   CLC
   ADC #$04
@@ -604,15 +637,16 @@ IncrementGameSpritePointerAndDecrementX:
   STA GameSpritePointer+1
   DEX
   RTS
+.endproc
 
 ;----------
 
-;LoadTempTestTable:
+;.proc LoadTempTestTable
 ;  LDX #00 ; Offset into TempTestTable
 ;  STX Temp
 ;  LDX #00 ; Speed (0-16)
 ;  LDY #00 ; Frame (0-7)
-;LoadTempTestTableLoop:
+;Loop:
 ;  JSR LoadAWithPixelsToDropPopcornAtSpeedAndFrame
 ;  STX Temp2
 ;  LDX Temp
@@ -622,16 +656,17 @@ IncrementGameSpritePointerAndDecrementX:
 ;  LDX Temp2
 ;  INY
 ;  CPY #8
-;  BLT LoadTempTestTableLoop
+;  BLT Loop
 ;  LDY #00
 ;  INX
 ;  CPX #17
-;  BLT LoadTempTestTableLoop
+;  BLT Loop
 ;  RTS
-
+;.endproc
+;
 ;----------
 
-LoadAWithPixelsToDropPopcornAtSpeedAndFrame:
+.proc LoadAWithPixelsToDropPopcornAtSpeedAndFrame
   ; in:  X = Speed (0-255)
   ; in:  Y = Frame (0-7)
   ; out: A = # pixels to drop popcorn
@@ -646,32 +681,36 @@ LoadAWithPixelsToDropPopcornAtSpeedAndFrame:
   LSR A
   LSR A
   RTS
+.endproc
 
 ;----------
 
-UpdateConveyor:
+.proc UpdateConveyor
   LDX ConveyorFrameCount
   INX
   CPX #ConveyorFrameSpeed
   BGE AdvanceConveyor
+
   STX ConveyorFrameCount
   RTS
+
 AdvanceConveyor:
   LDX #$00
   STX ConveyorFrameCount
   LDX ConveyorTile
   INX
   CPX #ConveyorLastTile + 1
-  BNE UpdateConveyorContinue
+  BNE Continue
   LDX #ConveyorFirstTile
-UpdateConveyorContinue:
+Continue:
   STX ConveyorTile
   JSR BufferConveyor
   RTS
+.endproc
 
 ;----------
 
-BufferConveyor:
+.proc BufferConveyor
   ;   Byte 0  = length                             
   ;   Byte 1  = high byte of the PPU address       
   ;   Byte 2  = low byte of the PPU address        
@@ -690,52 +729,60 @@ BufferConveyor:
   INX
   LDY #$20
   LDA ConveyorTile
-BufferConveyorLoop:
+
+Loop:
   STA PpuDrawingBuffer, X
   INX
   DEY
-  BNE BufferConveyorLoop
+  BNE Loop
+
   LDA #$00
   STA PpuDrawingBuffer, X;  Flag end of buffers
   INC NmiNeedDraw
   RTS
+.endproc
 
 ;----------
 
-InitializeCurrentShuffledPopcornRow:
+.proc InitializeCurrentShuffledPopcornRow
   JSR ResetCurrentShuffledPopcornRow
   JMP RandomizeShuffledPopcorn
   RTS
+.endproc
 
 ;----------
 
-ResetCurrentShuffledPopcornRow:
+.proc ResetCurrentShuffledPopcornRow
   LDX #00
-ResetCurrentShuffledPopcornRowLoop:
+
+Loop:
   TXA
   STA ShuffledPopcornIndexes, X
   INX
   CPX #15
-  BNE ResetCurrentShuffledPopcornRowLoop
+  BNE Loop
+
   LDX #14
   STX ShuffledPopcornNextQueuedIndex
   RTS
+.endproc
 
 ;----------
 
-RandomizeShuffledPopcorn:
+.proc RandomizeShuffledPopcorn
   LDX #00
-RandomizeShuffledPopcornLoop:
+Loop:
   JSR LoadYWithRandom0To14
   JSR SwapShuffledPopcornIndexesXAndY
   INX
   CPX #15
-  BNE RandomizeShuffledPopcornLoop
+  BNE Loop
   RTS
+.endproc
 
 ;----------
 
-LoadYWithRandom0To14:
+.proc LoadYWithRandom0To14
   PHA
   JSR GenerateRandomNumber
   LDA RandomNumber
@@ -743,21 +790,23 @@ LoadYWithRandom0To14:
   TAY
   PLA
   RTS
+.endproc
 
 ;----------
 
-LoadAWithAModulus15:
+.proc LoadAWithAModulus15
   CMP #15
-  BLT GotAModulus15
+  BLT Done
   SEC
   SBC #14
   JMP LoadAWithAModulus15
-GotAModulus15:
+Done:
   RTS
+.endproc
 
 ;----------
 
-SwapShuffledPopcornIndexesXAndY:
+.proc SwapShuffledPopcornIndexesXAndY
   LDA ShuffledPopcornIndexes, X
   PHA
   LDA ShuffledPopcornIndexes, Y
@@ -765,16 +814,18 @@ SwapShuffledPopcornIndexesXAndY:
   PLA
   STA ShuffledPopcornIndexes, Y
   RTS
+.endproc
 
 ;----------
 
-StartNextShuffledPopcornDropping:
+.proc StartNextShuffledPopcornDropping
   JSR ConvertNextShuffledPopcornToSpritedPopcorn
   JMP AdjustShuffledAndSpritedIndexes
+.endproc
 
 ;----------
 
-ConvertNextShuffledPopcornToSpritedPopcorn:
+.proc ConvertNextShuffledPopcornToSpritedPopcorn
   TYA
   PHA
   TXA
@@ -802,10 +853,11 @@ ConvertNextShuffledPopcornToSpritedPopcorn:
   PLA
   TAY
   RTS
+.endproc
 
 ;----------
 
-AddSpritesToSpriteBufferForShuffledPopcornAtColumnY:
+.proc AddSpritesToSpriteBufferForShuffledPopcornAtColumnY
   ; in: Y = Index of column (0-14) of shuffled popcorn to add sprites for
   ;
   ; Sprite Buffer: Y, Tile, Attribute, X
@@ -846,12 +898,11 @@ AddSpritesToSpriteBufferForShuffledPopcornAtColumnY:
   PLA
   TAX
   RTS
-
-
+.endproc
 
 ;----------
 
-LoadAWithYOfShuffledRow:
+.proc LoadAWithYOfShuffledRow
   TYA
   PHA
   LDY ShuffledPopcornRowIndex
@@ -861,50 +912,56 @@ LoadAWithYOfShuffledRow:
   TAY
   LDA Temp
   RTS
+.endproc
 
 ;----------
 
-LoadAWithSpeedOfPopcornAtShuffledRow:
+.proc LoadAWithSpeedOfPopcornAtShuffledRow
   LDA #4
   SEC
   SBC ShuffledPopcornRowIndex
   ADC SpeedOfPopcornOnLowestRow
   RTS
+.endproc
 
 ;----------
 
-LoadYWithIndexOfNextQueuedShuffledPopcorn:
+.proc LoadYWithIndexOfNextQueuedShuffledPopcorn
   LDY ShuffledPopcornNextQueuedIndex
   LDA ShuffledPopcornIndexes, Y
   TAY
   RTS
+.endproc
 
 ;----------
 
-LoadYAndXWithShuffledAndSpritedIndexes:
+.proc LoadYAndXWithShuffledAndSpritedIndexes
   LDY ShuffledPopcornNextQueuedIndex
   LDA ShuffledPopcornIndexes, Y
   TAY
   LDX SpritedPopcornNextAvailableIndex
   RTS
+.endproc
 
 ;----------
 
-AdjustShuffledAndSpritedIndexes:
+.proc AdjustShuffledAndSpritedIndexes
   DEC ShuffledPopcornNextQueuedIndex
   INC SpritedPopcornNextAvailableIndex
   RTS
+.endproc
 
 ;----------
 
-LoadAWithShuffledRowsPopcornTile:
+.proc LoadAWithShuffledRowsPopcornTile
   LDA ShuffledPopcornRowIndex
   ASL A                       ; Popcorn row index (0-4) * 2 = popcorn's tile index
   RTS
+.endproc
 
 ;----------
 
-ClearPopcornAtIndexYFromBackground:
+.proc ClearPopcornAtIndexYFromBackground
   ; in: Y = Index of column for popcorn of which we're going to clear the background
   TYA
   PHA
@@ -921,10 +978,11 @@ ClearPopcornAtIndexYFromBackground:
   PLA
   TAY
   RTS
+.endproc
 
 ;----------
 
-BufferPopcornBlanking:
+.proc BufferPopcornBlanking
   ; in: TempPointer = PPU Address of background tile for popcorn to blank
   ; 
   ;   Byte 0  = length                             
@@ -958,42 +1016,44 @@ BufferPopcornBlanking:
   PLA
   TAX
   RTS
+.endproc
 
 ;----------
 
-SetXToNextDrawingBuffer:
+.proc SetXToNextDrawingBuffer
   LDX #$00
   TXA
-SetXToNextDrawingBufferLoop:
+Loop:
   LDY PpuDrawingBuffer, X ; Length of this buffer's data
-  BEQ SetXToNextDrawingBufferDone
+  BEQ Done
   CLC
   ADC #4
   CLC
   ADC PpuDrawingBuffer, X
   TAX
-  JMP SetXToNextDrawingBufferLoop
-SetXToNextDrawingBufferDone:
+  JMP Loop
+Done:
   RTS
+.endproc
 
 ;----------
 
-AdvanceSpritedPopcorn:
+.proc AdvanceSpritedPopcorn
   TXA
   PHA
   TYA
   PHA
   LDX #0
-AdvanceSpritedPopcornLoop:
+Loop:
   CPX SpritedPopcornNextAvailableIndex
-  BEQ AdvanceSpritedPopcornDone
+  BEQ Done
   LDY SpritedPopcornSpriteBufferIndex, X
 
   LDA PpuSpriteBuffer, Y
   CMP #202
-  BLT AdvanceSpritedPopcornFalling
+  BLT Falling
 
-AdvanceSpritedPopcornConveyor:
+Conveyor:
   LDA PpuSpriteBuffer + 3, Y
   CLC
   ADC #1
@@ -1004,35 +1064,37 @@ AdvanceSpritedPopcornConveyor:
   ADC #1
   STA PpuSpriteBuffer + 7, Y
 
-  JMP AdvanceSpritedPopcornDoneMoving
+  JMP DoneMoving
 
-AdvanceSpritedPopcornFalling:
+Falling:
   CLC
   ADC #1
   STA PpuSpriteBuffer, Y
   STA PpuSpriteBuffer + 4, Y
 
-AdvanceSpritedPopcornDoneMoving:
+DoneMoving:
   LDA PpuSpriteBuffer + 7, Y
   CMP #$FE
-  BNE AdvanceSpritedPopcornNext
+  BNE NextLoop
   JSR RemovePopcornAtIndexYFromSpriteBuffer
   ; Lose a paddle.
 
-AdvanceSpritedPopcornNext:
+NextLoop:
   INX
-  JMP AdvanceSpritedPopcornLoop
-AdvanceSpritedPopcornDone:
+  JMP Loop
+
+Done:
   INC NmiNeedDma
   PLA
   TAY
   PLA
   TAX
   RTS
+.endproc
 
 ;----------
 
-RemovePopcornAtIndexYFromSpriteBuffer:
+.proc RemovePopcornAtIndexYFromSpriteBuffer
   ; in: Y = Index into PpuSpriteBuffer for first of two Popcorn sprites to remove
   LDA #$FE
   STA PpuSpriteBuffer + 0, Y
@@ -1045,48 +1107,47 @@ RemovePopcornAtIndexYFromSpriteBuffer:
   STA PpuSpriteBuffer + 7, Y
   INC NmiNeedDma
   RTS
+.endproc
 
 ;----------
 
-LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSprites:
+.proc LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSprites
   LDX #00
-
-LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSpritesLoop:
+Loop:
   LDA PpuSpriteBuffer + 1, X
   CMP #$FE
-  BNE LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSpritesNext
+  BNE NextLoop
   LDA PpuSpriteBuffer + 5, X
   CMP #$FE
-  BNE LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSpritesNext
-  JMP LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSpritesDone
-
-LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSpritesNext:
+  BNE NextLoop
+  JMP Done
+NextLoop:
   INX
   INX
   INX
   INX
-  JMP LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSpritesLoop
-
-LoadXWithNextAvailablePpuSpriteBufferIndexForPopcornSpritesDone:
+  JMP Loop
+Done:
   RTS
+.endproc
 
 ;----------
 
-StartNextShuffledPopcornDroppingWhenBPressed:
+.proc StartNextShuffledPopcornDroppingWhenBPressed
   LDA Player1PreviousButtons
   AND #ButtonB
-  BNE StartNextShuffledPopcornDroppingWhenBPressedDone
+  BNE Done
   LDA Player1Buttons
   AND #ButtonB
-  BEQ StartNextShuffledPopcornDroppingWhenBPressedDone
-  JSR StartNextShuffledPopcornDropping
-
-StartNextShuffledPopcornDroppingWhenBPressedDone:
+  BEQ Done
+  JMP StartNextShuffledPopcornDropping
+Done:
   RTS
+.endproc
 
 ;----------
 
-GenerateRandomNumber:
+.proc GenerateRandomNumber
   PHA
   LDA RandomNumber
   BEQ DoEor
@@ -1099,6 +1160,7 @@ SetRandomNumber:
   STA RandomNumber
   PLA
   RTS
+.endproc
 
 ;----------
 
