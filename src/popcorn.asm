@@ -37,6 +37,8 @@ ConveyorFrameSpeed = 2
 ConveyorFirstTile = $0B
 ConveyorLastTile = $0E
 ConveyorBackgroundPpuAddress = $2340
+SpriteBufferUnusedFlag = $FE
+MaxXPositionOfPopcornOnConveyor = $FE
 
 ;----------
 
@@ -71,17 +73,15 @@ ShuffledPopcornRowIndex:          .res 1   ; Index of popcorn row currently queu
 ShuffledPopcornIndexes:           .res 15  ; Column index (0-14).  Filled with shuffled 0-14.  Indicates the order popcorn falls in row.
 ShuffledPopcornNextQueuedIndex:   .res 1   ; Index into ShuffledPopcornIndexes for next popcorn to fall (0-14)
 
-SpritedPopcornX:                  .res 15  ; X of sprited popcorn
-SpritedPopcornY:                  .res 15  ; Y of sprited popcorn
-SpritedPopcornTile:               .res 15  ; Index of first tile of sprited popcorn
+SpritedPopcornNextAvailableIndex: .res 1   ; Index into sprited popcorn lists of next available spot to store a sprited popcorn
 SpritedPopcornSpeed:              .res 15  ; Speed (0-255) of sprited popcorn
 SpritedPopcornSpriteBufferIndex:  .res 15  ; Index of popcorn's Sprite in PpuSpriteBuffer
-SpritedPopcornNextAvailableIndex: .res 1   ; Index into sprited popcorn lists of next available spot to store a sprited popcorn
 
 SpeedOfPopcornOnLowestRow:        .res 1   ; The speed (0-255) of popcorn on lowest row of current level
 CurrentFrameModulus8:             .res 1   ; Current frame # (0-7).
 
-; This can't be in ZP any more (no room).  $100 is stack, $200 is PpuSpriteBuffer, $300 is PpuDrawingBuffer.  $400 is available.
+; This may not fit in ZP. Double check in popcorn.lbl before using.
+; $100 is stack, $200 is PpuSpriteBuffer, $300 is PpuDrawingBuffer.  $400 is available.
 ;TempTestTable:                    .res 8*17;
 
 ;----------
@@ -338,12 +338,12 @@ HandleGameOver:
   LDX #$00
 Loop:
   LDA #$00
-  STA $0000, x
-  STA $0300, x
-  STA $0400, x
-  STA $0500, x
-  STA $0600, x
-  STA $0700, x
+  STA $0000, X
+  STA $0300, X
+  STA $0400, X
+  STA $0500, X
+  STA $0600, X
+  STA $0700, X
   INX
   BNE Loop
   RTS
@@ -353,9 +353,9 @@ Loop:
 
 .proc ClearSprites
   LDX #00
-  LDA #$FE
+  LDA #SpriteBufferUnusedFlag
 Loop:
-  STA $0200, x
+  STA $0200, X
   INX
   BNE Loop
   INC NmiNeedDma
@@ -372,7 +372,7 @@ Loop:
   STA $2006       ; write the low byte of $3F00 address
   LDX #$00        ; start out at 0
 Loop:
-  LDA Palette, x  ; load data from address (Palette + the value in x)
+  LDA Palette, X  ; load data from address (Palette + the value in X)
   STA $2007       ; write to PPU
   INX             ; X = X + 1
   CPX #$20        ; Compare X to hex $10, decimal 16 - copying 16 bytes = 4 sprites
@@ -1074,10 +1074,13 @@ Falling:
 
 DoneMoving:
   LDA PpuSpriteBuffer + 7, Y
-  CMP #$FE
+  CMP #MaxXPositionOfPopcornOnConveyor
   BNE NextLoop
+
   JSR RemovePopcornAtIndexYFromSpriteBuffer
+  JSR RemovePopcornAtIndexXFromSpritedPopcorn
   ; Lose a paddle.
+  JMP Done
 
 NextLoop:
   INX
@@ -1094,9 +1097,31 @@ Done:
 
 ;----------
 
+.proc RemovePopcornAtIndexXFromSpritedPopcorn
+  TXA
+  PHA
+  INX
+Loop:
+  CPX SpritedPopcornNextAvailableIndex
+  BEQ Done
+  LDA SpritedPopcornSpeed, X
+  STA SpritedPopcornSpeed - 1, X
+  LDA SpritedPopcornSpriteBufferIndex, X
+  STA SpritedPopcornSpriteBufferIndex - 1, X
+  INX
+  JMP Loop
+Done:
+  DEC SpritedPopcornNextAvailableIndex
+  PLA
+  TAX
+  RTS
+.endproc
+
+;----------
+
 .proc RemovePopcornAtIndexYFromSpriteBuffer
   ; in: Y = Index into PpuSpriteBuffer for first of two Popcorn sprites to remove
-  LDA #$FE
+  LDA #SpriteBufferUnusedFlag
   STA PpuSpriteBuffer + 0, Y
   STA PpuSpriteBuffer + 1, Y
   STA PpuSpriteBuffer + 2, Y
@@ -1105,6 +1130,13 @@ Done:
   STA PpuSpriteBuffer + 5, Y
   STA PpuSpriteBuffer + 6, Y
   STA PpuSpriteBuffer + 7, Y
+  TYA
+  CLC
+  ADC #8
+  CMP PpuSpriteBufferIndex
+  BNE Done
+  STY PpuSpriteBufferIndex
+Done:
   INC NmiNeedDma
   RTS
 .endproc
