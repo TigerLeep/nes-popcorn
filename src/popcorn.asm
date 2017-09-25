@@ -288,17 +288,18 @@ HandlePlayerMissedPopcorn:
   JSR UpdateConveyor
   JSR ReadControllers
   JSR MoveOneSpritedPopcornAlongConveyor
-  JSR SwitchToGameStateInitializeGameOverIfNoMorePaddles
+  JSR ProcessFailedLevelOncePopcornReachesEndOfConveyor
   JSR WaitForNextNmiToFinish
   JMP Main
 HandleInitializeGameOver:
   JSR SwitchToGameStateGameOver;
   JMP Main
 HandleGameOver:
-  JSR UpdateConveyor
-  JSR ReadControllers
-  JSR WaitForNextNmiToFinish
-  JMP Main
+  JMP ResetInterruptHandler
+  ;JSR UpdateConveyor
+  ;JSR ReadControllers
+  ;JSR WaitForNextNmiToFinish
+  ;JMP Main
 .endproc
 
 ;----------
@@ -593,13 +594,13 @@ Loop:
 
 .proc MovePaddlesLeft
   JSR InitializeMovingPaddles
-  LDA (GameSpritePointer),Y
+  LDA (GameSpritePointer), Y
   SEC
   SBC NormalPaddleSpeed
   BGE UseNormalLeftPaddleSpeed
 
 UseAdjustedLeftPaddleSpeed:
-  LDA (GameSpritePointer),Y
+  LDA (GameSpritePointer), Y
   STA CurrentPaddleSpeed
   JMP Loop
 
@@ -608,10 +609,10 @@ UseNormalLeftPaddleSpeed:
   STA CurrentPaddleSpeed
 
 Loop:
-  LDA (GameSpritePointer),Y
+  LDA (GameSpritePointer), Y
   SEC
   SBC CurrentPaddleSpeed
-  STA (GameSpritePointer),Y
+  STA (GameSpritePointer), Y
   JSR IncrementGameSpritePointerAndDecrementX
   BNE Loop
   INC NmiNeedDma
@@ -622,7 +623,7 @@ Loop:
 
 .proc MovePaddlesRight
   JSR InitializeMovingPaddles
-  LDA (GameSpritePointer),Y
+  LDA (GameSpritePointer), Y
   CLC
   ADC NormalPaddleSpeed
   CMP #$E0
@@ -650,10 +651,10 @@ UseNormalRightPaddleSpeed:
   STA CurrentPaddleSpeed
 
 Loop:
-  LDA (GameSpritePointer),Y
+  LDA (GameSpritePointer), Y
   CLC
   ADC CurrentPaddleSpeed
-  STA (GameSpritePointer),Y
+  STA (GameSpritePointer), Y
   JSR IncrementGameSpritePointerAndDecrementX
   BNE Loop
   INC NmiNeedDma
@@ -663,14 +664,26 @@ Loop:
 ;----------
 
 .proc InitializeMovingPaddles
+  JSR LoadYWithIndexIntoSpriteBufferForTopPaddle
+  STY Temp
   LDA #>PpuSpriteBuffer
-  STA GameSpritePointer+1
+  STA GameSpritePointer + 1
   LDA #<PpuSpriteBuffer
   CLC
-  ADC #$03
+  ADC Temp ; Skip to top paddle
+  ADC #03 ; Move forward to X position
   STA GameSpritePointer
-  LDY #$00
-  LDX #20
+  LDY #00
+  LDA #5
+  SEC
+  SBC PaddleCount
+  ASL
+  ASL
+  STA Temp
+  LDA #20
+  SEC
+  SBC Temp
+  TAX
   RTS
 .endproc
 
@@ -723,8 +736,6 @@ Loop:
   PHA
 
   LDA SpritedPopcornSpeed, X
-  CLC
-  ADC #8
   TAX
   LDY CurrentFrameModulus8
   JSR LoadAWithPixelsToDropPopcornAtSpeedAndFrame
@@ -767,10 +778,11 @@ Loop:
 
   STX ConveyorFrameCount
   RTS
+.endproc
 
 ;----------
 
-AdvanceConveyor:
+.proc AdvanceConveyor
   LDX #$00
   STX ConveyorFrameCount
   LDX ConveyorTile
@@ -1187,6 +1199,26 @@ MovePopcornOnConveyor:
   ADC #8
   STA PpuSpriteBuffer + SpriteBufferXOffset + SpriteBufferNextSpriteOffset, Y
 
+Done:
+  INC NmiNeedDma
+  PLA
+  TAY
+  PLA
+  TAX
+  RTS
+.endproc
+
+;----------
+
+.proc ProcessFailedLevelOncePopcornReachesEndOfConveyor
+  TXA
+  PHA
+  TYA
+  PHA
+
+  LDX #0
+  LDY SpritedPopcornSpriteBufferIndex, X
+
 CheckIfPocornAtEndOfConveyor:
   LDA PpuSpriteBuffer + SpriteBufferXOffset + SpriteBufferNextSpriteOffset, Y
   CMP #MaxXPositionOfPopcornOnConveyor
@@ -1196,6 +1228,15 @@ RemoveSpritedPopcornAndTopPaddle:
   JSR RemoveTwoSpritesAtIndexYFromSpriteBuffer
   JSR RemovePopcornAtIndexXFromSpritedPopcorn
   JSR RemoveTopPaddle
+
+SwitchToNextGameState:
+  LDA PaddleCount
+  BEQ GameOver
+  JSR SwitchToGameStatePlay
+  JMP Done
+
+GameOver:
+  JSR SwitchToGameStateInitializeGameOver
 
 Done:
   INC NmiNeedDma
@@ -1246,7 +1287,6 @@ Done:
 .endproc
 
 ;----------
-
 
 .proc RemoveTwoSpritesAtIndexYFromSpriteBuffer
   ; in: Y = Index into PpuSpriteBuffer for the first of the two sprites to remove
@@ -1398,6 +1438,8 @@ Done:
   RTS
 .endproc
 
+;----------
+
 .proc SwitchToGameStateInitializeGameOverIfNoMorePaddles
   LDA PaddleCount
   BNE Done
@@ -1425,12 +1467,13 @@ SetRandomNumber:
 
 ;----------
 
-WaitForNextNmiToFinish:
+.proc WaitForNextNmiToFinish
   INC IsMainWaitingForNmiToFinish
-WaitForNextNmiToFinishLoop:
+Loop:
   LDA IsMainWaitingForNmiToFinish
-  BNE WaitForNextNmiToFinishLoop
+  BNE Loop
   RTS
+.endproc
 
 ;----------
 
