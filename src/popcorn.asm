@@ -142,7 +142,7 @@ DoneNeedDma:
   LDA NmiNeedDraw                   ; do other PPU drawing (NT/Palette/whathaveyou)
   BEQ DoneNeedDraw                  ; conditional via the 'needdraw' flag
   BIT $2002                         ; clear VBl flag, reset $2005/$2006 toggle
-  JSR XferDrawingsToPpu             ; draw the stuff from the drawing buffer
+  JSR TransferDrawingsToPpu         ; draw the stuff from the drawing buffer
   DEC NmiNeedDraw
 DoneNeedDraw:
   ;LDA NmiNeedPpuRegistersUpdated
@@ -185,37 +185,46 @@ Done:
 
 ;----------
 
-.proc XferDrawingsToPpu
-  ; Input data has the following format:           
-  ;   Byte 0  = length                             
-  ;   Byte 1  = high byte of the PPU address       
-  ;   Byte 2  = low byte of the PPU address        
-  ;   Byte 3  = reserved for now
-  ;   Byte 4+ = {length} bytes                     
-  ; Repeat until length == 0 is found.             
-  LDX #$00
+.proc TransferDrawingsToPpu
+  LDX #00
   LDA $2002                 ; read PPU status to reset the high/low latch
 DrawingsLoop:
   LDY PpuDrawingBuffer, X   ; load the length of the data to the Y register
   BEQ Done                  ; length equal 0 means that the drawing is done  
-  INX                       ; X = 1
-  LDA PpuDrawingBuffer, X   ; load the high byte of the target address
-  STA $2006                 ; write the high byte to PPU
-  INX                       ; X = 2
-  LDA PpuDrawingBuffer, X   ; load the low byte of the target address
-  STA $2006                 ; write the low byte to PPU
-  INX                       ; X = 3 (reserved for now)
-DrawingLoop:
-  INX                       ; increment X so it points to the next byte
-  LDA PpuDrawingBuffer, X   ; load a byte of the data
-  STA $2007                 ; write it to PPU
-  DEY                       ; decrement Y
-  BNE DrawingLoop           ; if Y != 0 jump to .setLoop
-  INX                       ; increment X so it points to the next segment      
+  JSR TransferBufferedDrawingToPpu
   JMP DrawingsLoop          ; jump back to .drawLoop
 Done:
-  LDA #$00
+  LDA #00
   STA PpuDrawingBuffer      ; Reset buffer
+  RTS
+.endproc
+
+;----------
+
+.proc TransferBufferedDrawingToPpu
+  ; in:  X = index to first byte of drawing buffer of first byte
+  ; in:  Y = length of drawing buffer's data
+  ; out: X = index into next drawing buffer
+  ; Buffered drawing has the following format:
+  ;   Byte 0  = length
+  ;   Byte 1  = high byte of the PPU address
+  ;   Byte 2  = low byte of the PPU address
+  ;   Byte 3  = reserved for now
+  ;   Byte 4+ = {length} bytes
+  LDA PpuDrawingBuffer + 1, X ; load the high byte of the target address
+  STA $2006                   ; write the high byte to PPU
+  LDA PpuDrawingBuffer + 2, X ; load the low byte of the target address
+  STA $2006                   ; write the low byte to PPU
+  INX
+  INX
+  INX
+DrawingLoop:
+  INX                         ; increment X so it points to the next byte
+  LDA PpuDrawingBuffer, X     ; load a byte of the data
+  STA $2007                   ; write it to PPU
+  DEY                         ; decrement Y
+  BNE DrawingLoop             ; if Y != 0 jump to .setLoop
+  INX                         ; increment X so it points to the next segment
   RTS
 .endproc
 
@@ -360,9 +369,10 @@ HandleGameOver:
 .proc InitializePopcorn
   LDX #04
   STX ShuffledPopcornRowIndex
-  LDX #00 
+  LDX #00
   STX SpritedPopcornNextAvailableIndex
   JSR InitializeCurrentShuffledPopcornRow
+  JSR RestorePopcornToBackground
   RTS
 .endproc
 
@@ -1120,7 +1130,6 @@ Loop:
   BEQ Done
   CLC
   ADC #4
-  CLC
   ADC PpuDrawingBuffer, X
   TAX
   JMP Loop
@@ -1229,6 +1238,8 @@ RemoveSpritedPopcornAndTopPaddle:
   JSR RemovePopcornAtIndexXFromSpritedPopcorn
   JSR RemoveTopPaddle
 
+  JSR InitializePopcorn
+
 SwitchToNextGameState:
   LDA PaddleCount
   BEQ GameOver
@@ -1239,7 +1250,6 @@ GameOver:
   JSR SwitchToGameStateInitializeGameOver
 
 Done:
-  INC NmiNeedDma
   PLA
   TAY
   PLA
@@ -1291,17 +1301,17 @@ Done:
 .proc RemoveTwoSpritesAtIndexYFromSpriteBuffer
   ; in: Y = Index into PpuSpriteBuffer for the first of the two sprites to remove
   LDA #SpriteBufferUnusedFlag
-  STA PpuSpriteBuffer + 0, Y
-  STA PpuSpriteBuffer + 1, Y
-  STA PpuSpriteBuffer + 2, Y
-  STA PpuSpriteBuffer + 3, Y
-  STA PpuSpriteBuffer + 4, Y
-  STA PpuSpriteBuffer + 5, Y
-  STA PpuSpriteBuffer + 6, Y
-  STA PpuSpriteBuffer + 7, Y
+  STA PpuSpriteBuffer + SpriteBufferYOffset, Y
+  STA PpuSpriteBuffer + SpriteBufferTileOffset, Y
+  STA PpuSpriteBuffer + SpriteBufferAttributeOffset, Y
+  STA PpuSpriteBuffer + SpriteBufferXOffset, Y
+  STA PpuSpriteBuffer + SpriteBufferYOffset         + SpriteBufferNextSpriteOffset, Y
+  STA PpuSpriteBuffer + SpriteBufferTileOffset      + SpriteBufferNextSpriteOffset, Y
+  STA PpuSpriteBuffer + SpriteBufferAttributeOffset + SpriteBufferNextSpriteOffset, Y
+  STA PpuSpriteBuffer + SpriteBufferXOffset         + SpriteBufferNextSpriteOffset, Y
   TYA
   CLC
-  ADC #8
+  ADC #(SpriteBufferXOffset + SpriteBufferNextSpriteOffset + 1)
   CMP PpuSpriteBufferIndex
   BNE Done
   STY PpuSpriteBufferIndex
@@ -1354,6 +1364,7 @@ Done:
   JSR LoadYWithIndexIntoSpriteBufferForTopPaddle
   JSR RemoveFourSpritesAtIndexYFromSpriteBuffer
   DEC PaddleCount
+  INC NmiNeedDraw
   PLA
   TAY
   RTS
@@ -1445,6 +1456,43 @@ Done:
   BNE Done
   JMP SwitchToGameStateInitializeGameOver
 Done:
+  RTS
+.endproc
+
+;----------
+
+.proc RestorePopcornToBackground
+  LDX #00
+Loop:
+  JSR AddPopcornRowToDrawBuffer
+  JSR WaitForNextNmiToFinish
+  INX
+  CPX #04
+  BLT Loop
+  RTS
+.endproc
+
+;----------
+
+.proc AddPopcornRowToDrawBuffer
+  ; in: X = Popcorn row to restore (0-4, 0 = top row, 4 = bottom row)
+  ;     X*32+1 = starting offset into nametable for Popcorn row.
+  ;     Buffer 30 bytes of tile x*2.
+  TXA
+  ASL ; *2
+  TAX
+  ASL
+  ASL
+  ASL
+  ASL ; *32
+  CLC
+  ADC #01
+
+  ; TODO: Add length (30), high ($20)/low (A) PPU address, 0 (unused), and 30 bytes of X
+  ; to next available buffer (SetXToNextDrawingBuffer)
+  ; Considering using the (unused) byte as flag for RLE data. Instead of 30 bytes of data,
+  ; only store 2: 30, X.
+
   RTS
 .endproc
 
